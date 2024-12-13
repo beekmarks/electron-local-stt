@@ -1,7 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, session, desktopCapturer } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
 import { promises as fs } from 'fs'
 
 ipcMain.handle('writeFile', (_event, path, data): Promise<void> => {
@@ -21,6 +20,59 @@ ipcMain.handle('stop-audio-capture', async (event) => {
   await webContents.executeJavaScript('window.stopAudioCapture()');
 });
 
+async function handleOllamaRequest(event, prompt: string, systemPrompt: string) {
+  try {
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'mistral',
+        prompt: prompt,
+        system: systemPrompt,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('Failed to get response reader');
+    }
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n').filter(line => line.trim());
+      
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+          if (data.response) {
+            event.sender.send('ollama:chunk', data.response);
+          }
+        } catch (e) {
+          console.error('Error parsing JSON:', e);
+        }
+      }
+    }
+
+    event.sender.send('ollama:done');
+    return null;
+  } catch (error) {
+    console.error('Error calling Ollama:', error);
+    throw error;
+  }
+}
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -28,10 +80,15 @@ function createWindow(): void {
     height: 670,
     show: false,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    ...(process.platform === 'linux'
+      ? {
+          icon: join(__dirname, '../../build/icon.png')
+        }
+      : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      webSecurity: false  // Allow local file access and cross-origin requests
     }
   })
 
@@ -67,6 +124,9 @@ function createWindow(): void {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
+
+  // Register IPC handler for Ollama requests
+  ipcMain.handle('ollama:generate', handleOllamaRequest);
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
