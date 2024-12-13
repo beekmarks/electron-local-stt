@@ -3,7 +3,6 @@ const electron = require("electron");
 const path = require("path");
 const utils = require("@electron-toolkit/utils");
 const fs = require("fs");
-const icon = path.join(__dirname, "../../resources/icon.png");
 electron.ipcMain.handle("writeFile", (_event, path2, data) => {
   console.log("writing file to " + path2);
   return fs.promises.writeFile(path2, data);
@@ -17,16 +16,65 @@ electron.ipcMain.handle("stop-audio-capture", async (event) => {
   const webContents = event.sender;
   await webContents.executeJavaScript("window.stopAudioCapture()");
 });
+async function handleOllamaRequest(event, prompt, systemPrompt) {
+  try {
+    const response = await fetch("http://localhost:11434/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama2",
+        prompt,
+        system: systemPrompt,
+        stream: true
+      })
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) {
+      throw new Error("Failed to get response reader");
+    }
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      const lines = chunk.split("\n").filter((line) => line.trim());
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+          if (data.response) {
+            event.sender.send("ollama:chunk", data.response);
+          }
+        } catch (e) {
+          console.error("Error parsing JSON:", e);
+        }
+      }
+    }
+    event.sender.send("ollama:done");
+    return null;
+  } catch (error) {
+    console.error("Error calling Ollama:", error);
+    throw error;
+  }
+}
 function createWindow() {
   const mainWindow = new electron.BrowserWindow({
     width: 900,
     height: 670,
     show: false,
     autoHideMenuBar: true,
-    ...process.platform === "linux" ? { icon } : {},
+    ...process.platform === "linux" ? {
+      icon: path.join(__dirname, "../../build/icon.png")
+    } : {},
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
-      sandbox: false
+      sandbox: false,
+      webSecurity: false
+      // Allow local file access and cross-origin requests
     }
   });
   electron.session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
@@ -56,6 +104,7 @@ function createWindow() {
     electron.shell.openExternal(details.url);
     return { action: "deny" };
   });
+  electron.ipcMain.handle("ollama:generate", handleOllamaRequest);
   if (utils.is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
