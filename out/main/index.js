@@ -24,7 +24,7 @@ async function handleOllamaRequest(event, prompt, systemPrompt) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "llama2",
+        model: "mistral",
         prompt,
         system: systemPrompt,
         stream: true
