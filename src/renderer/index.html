@@ -2,156 +2,391 @@
 <html lang="en-us">
   
   <head>
-    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline'; object-src 'self'">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline'; object-src 'self'; worker-src 'self';">
     <title>Real-time Local Speech To Text</title>
 
     <style>
-      body {
-        font-family: Arial, sans-serif;
-        font-size: 14px;
-        margin: 2em;
+      :root {
+        --vscode-bg: #1e1e1e;
+        --vscode-bg-light: #252526;
+        --vscode-text: #cccccc;
+        --vscode-text-muted: #8a8a8a;
+        --vscode-accent: #007acc;
+        --vscode-accent-hover: #1b8bd0;
+        --vscode-border: #3c3c3c;
+        --vscode-error: #f48771;
+        --vscode-success: #89d185;
+        --vscode-input-bg: #3c3c3c;
+        --vscode-panel-bg: #252526;
+        --spacing-unit: 8px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
         padding: 0;
-        background-color: #ffffff;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        background-color: var(--vscode-bg);
+        color: var(--vscode-text);
+        line-height: 1.5;
+        padding: var(--spacing-unit);
+      }
+
+      #main-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 300px 1fr;
+        gap: calc(var(--spacing-unit) * 2);
+        height: calc(100vh - var(--spacing-unit) * 2);
+      }
+
+      .app-header {
+        grid-column: 1 / -1;
+        padding: calc(var(--spacing-unit) * 2);
+        background-color: var(--vscode-bg-light);
+        border-bottom: 1px solid var(--vscode-border);
+        display: flex;
+        align-items: center;
+        gap: calc(var(--spacing-unit) * 2);
+      }
+
+      .app-title {
+        font-size: 1.2em;
+        font-weight: 600;
+        color: var(--vscode-text);
+      }
+
+      .status-badge {
+        padding: calc(var(--spacing-unit) / 2) var(--spacing-unit);
+        border-radius: 3px;
+        background-color: var(--vscode-input-bg);
+        font-size: 0.9em;
+      }
+
+      .settings-panel {
+        background-color: var(--vscode-panel-bg);
+        border-right: 1px solid var(--vscode-border);
+        padding: calc(var(--spacing-unit) * 2);
+        overflow-y: auto;
+      }
+
+      .main-content {
+        display: flex;
+        flex-direction: column;
+        gap: calc(var(--spacing-unit) * 2);
+        overflow-y: auto;
+      }
+
+      .panel-section {
+        background-color: var(--vscode-bg-light);
+        border: 1px solid var(--vscode-border);
+        border-radius: 4px;
+        padding: calc(var(--spacing-unit) * 2);
+      }
+
+      .panel-header {
+        font-size: 1.1em;
+        font-weight: 500;
+        margin-bottom: calc(var(--spacing-unit) * 2);
+        color: var(--vscode-text);
+      }
+
+      .button {
+        background-color: var(--vscode-accent);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 8px 0;
+        transition: background-color 0.2s;
+      }
+
+      .button:hover:not(:disabled) {
+        background-color: var(--vscode-accent-hover);
+      }
+
+      .button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .setting-group {
+        margin-bottom: calc(var(--spacing-unit) * 3);
+      }
+
+      .setting-group label {
+        display: block;
+        margin-bottom: var(--spacing-unit);
+        color: var(--vscode-text);
+        font-size: 0.9em;
+      }
+
+      .setting-group input[type="text"],
+      .setting-group textarea {
+        width: 100%;
+        padding: var(--spacing-unit);
+        background-color: var(--vscode-input-bg);
+        border: 1px solid var(--vscode-border);
+        color: var(--vscode-text);
+        border-radius: 3px;
+        font-size: 0.9em;
+      }
+
+      .setting-group input[type="text"]:focus,
+      .setting-group textarea:focus {
+        outline: none;
+        border-color: var(--vscode-accent);
+      }
+
+      .text-input-container {
+        display: flex;
+        gap: var(--spacing-unit);
+        margin-top: auto;
+        padding: calc(var(--spacing-unit) * 2);
+        background-color: var(--vscode-bg-light);
+        border-top: 1px solid var(--vscode-border);
+      }
+
+      .text-input-container textarea {
+        flex-grow: 1;
+        padding: var(--spacing-unit);
+        background-color: var(--vscode-input-bg);
+        border: 1px solid var(--vscode-border);
+        color: var(--vscode-text);
+        border-radius: 3px;
+        resize: none;
+        min-height: 44px;
+        font-family: inherit;
+      }
+
+      .text-input-container textarea:focus {
+        outline: none;
+        border-color: var(--vscode-accent);
+      }
+
+      .error-message {
+        color: var(--vscode-error);
+        background-color: rgba(244, 135, 113, 0.1);
+        border: 1px solid var(--vscode-error);
+        border-radius: 3px;
+        padding: var(--spacing-unit);
+        margin: var(--spacing-unit) 0;
+        display: none;
+        font-size: 0.9em;
+      }
+
+      .error-message.show {
+        display: block;
+      }
+
+      #transcription-container {
+        margin-bottom: calc(var(--spacing-unit) * 2);
       }
 
       .transcription-line {
-        margin: 5px 0;
-        padding: 5px;
-        border-radius: 4px;
-        background-color: #f8f9fa;
+        margin: 8px 0;
+        line-height: 1.5;
+      }
+
+      .transcription-text {
+        word-wrap: break-word;
       }
 
       .speaker-label {
         font-weight: bold;
-        margin-right: 8px;
         padding: 2px 6px;
-        border-radius: 3px;
+        border-radius: 4px;
+        margin-right: 8px;
       }
 
-      /* Unique colors for different speakers */
       .speaker-1 {
-        color: #ffffff;
-        background-color: #2c3e50;
+        color: #4CAF50;  /* Green */
+        background-color: rgba(76, 175, 80, 0.1);
       }
 
       .speaker-2 {
-        color: #ffffff;
-        background-color: #e74c3c;
+        color: #2196F3;  /* Blue */
+        background-color: rgba(33, 150, 243, 0.1);
       }
 
       .speaker-3 {
-        color: #ffffff;
-        background-color: #27ae60;
+        color: #FF9800;  /* Orange */
+        background-color: rgba(255, 152, 0, 0.1);
       }
 
       .speaker-4 {
-        color: #ffffff;
-        background-color: #8e44ad;
-      }
-
-      .speaker-5 {
-        color: #ffffff;
-        background-color: #d35400;
+        color: #E91E63;  /* Pink */
+        background-color: rgba(233, 30, 99, 0.1);
       }
 
       .speaker-unknown {
-        color: #ffffff;
-        background-color: #95a5a6;
-      }
-
-      .transcription-text {
-        color: #34495e;
-      }
-
-      #state-transcribed {
-        max-height: 400px;
-        overflow-y: auto;
-        padding: 10px;
-        background-color: white;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      }
-
-      #llm-response {
-        margin-top: 20px;
-        padding: 10px;
-        background-color: #f5f5f5;
-        border-radius: 5px;
+        color: #9E9E9E;  /* Gray */
+        background-color: rgba(158, 158, 158, 0.1);
       }
 
       #llm-output {
-        max-height: 400px;
-        overflow-y: auto;
-        padding: 10px;
-        background-color: white;
-        border: 1px solid #ddd;
+        background-color: var(--vscode-input-bg);
+        padding: calc(var(--spacing-unit) * 2);
         border-radius: 3px;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        line-height: 1.5;
+        white-space: pre-wrap;
+        font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9em;
       }
 
       .response-item {
-        margin-bottom: 15px;
-        padding: 10px;
-        border-bottom: 1px solid #eee;
-        animation: fadeIn 0.3s ease-in;
-      }
-
-      .streaming-response {
-        display: inline-block;
-        min-height: 1em;
-      }
-
-      @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
+        padding: calc(var(--spacing-unit) * 2);
+        border-bottom: 1px solid var(--vscode-border);
       }
 
       .response-item:last-child {
         border-bottom: none;
+      }
+
+      .streaming-response {
+        display: block;
+        margin-top: var(--spacing-unit);
+        font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      }
+
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--vscode-bg);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--vscode-border);
+        border-radius: 5px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+      }
+
+      /* Add toggle switch styles */
+      .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 60px;
+        height: 34px;
+        margin: 8px 0;
+      }
+
+      .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+      }
+
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--vscode-text-muted);
+        transition: .4s;
+        border-radius: 34px;
+      }
+
+      .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 26px;
+        width: 26px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+      }
+
+      input:checked + .toggle-slider {
+        background-color: var(--vscode-accent);
+      }
+
+      input:checked + .toggle-slider:before {
+        transform: translateX(26px);
+      }
+
+      .toggle-container {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0;
       }
     </style>
 
   </head>
   <body>
     <div id="main-container">
-      <p><b>Real-time Local Speech To Text</b></p>
-
-      <div id="model-whisper">
-       <span id="model-whisper-status"></span>
-      
-        <span id="fetch-whisper-progress"></span>
+      <div class="app-header">
+        <span class="app-title">Real-time Local Speech To Text</span>
+        <span class="status-badge">Status: <b id="state-status">not started</b></span>
       </div>
 
-      <br />
+      <div class="settings-panel">
+        <div class="toggle-container">
+          <label class="toggle-switch">
+            <input type="checkbox" id="llm-toggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+          <span>Enable LLM Processing</span>
+        </div>
+        <div class="setting-group">
+          <label for="model-name">Ollama Model</label>
+          <input type="text" id="model-name" value="mistral" />
+          <button class="button" onclick="window.updateModel()">Update Model</button>
+          <div id="model-error" class="error-message"></div>
+        </div>
+        
+        <div class="setting-group">
+          <label for="system-prompt">System Prompt</label>
+          <textarea id="system-prompt" rows="3">You are a helpful AI assistant. Respond to the user's input in a clear and concise manner.</textarea>
+          <button class="button" onclick="window.updateSystemPrompt()">Update Prompt</button>
+        </div>
 
-      <div id="input">
-        <button id="start" onclick="window.onStart()" disabled>Start Listening</button>
-        <button id="stop" onclick="window.onStop()" disabled>Stop Listening</button>
+        <div class="setting-group">
+          <label>Voice Controls</label>
+          <div style="display: flex; gap: var(--spacing-unit);">
+            <button id="start" class="button" onclick="window.onStart()" disabled>Start Listening</button>
+            <button id="stop" class="button" onclick="window.onStop()" disabled>Stop Listening</button>
+          </div>
+        </div>
       </div>
 
-      <br />
-
-      <div id="state">
-        Status: <b><span id="state-status">not started</span></b>
-
-        <div id="system-prompt-container" style="margin: 20px 0;">
-          <h3>System Prompt:</h3>
-          <textarea id="system-prompt" rows="4" style="width: 100%; margin-bottom: 10px;">You are a helpful AI assistant. Respond to the user's input in a clear and concise manner.</textarea>
-          <button onclick="window.updateSystemPrompt()">Update System Prompt</button>
+      <div class="main-content">
+        <div class="panel-section" id="transcription-container">
+          <div class="panel-header">Transcription</div>
+          <button class="button" onclick="resetTranscription()">Reset Transcription</button>
+          <div id="state-transcribed"></div>
         </div>
 
-        <div id="state-transcribed">
-        </div>
-
-        <div id="llm-response">
-          <h3>LLM Response:</h3>
+        <div class="panel-section">
+          <div class="panel-header">LLM Response</div>
           <pre id="llm-output">[LLM responses will appear here]</pre>
         </div>
-      </div>
 
-      <hr />
+        <div class="text-input-container">
+          <textarea 
+            id="user-input" 
+            placeholder="Type your message here..."
+            rows="1"
+          ></textarea>
+          <button id="send-message" class="button" onclick="window.sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
 
     <script type="text/javascript" src="./src/helpers.js"></script>
     <script type="text/javascript" src="./src/ollama.js"></script>
@@ -159,7 +394,7 @@
       import AzureSpeechService from './src/azure_speech_service.js';
       
       // Azure Speech Service configuration
-      const AZURE_SUBSCRIPTION_KEY = '';
+      const AZURE_SUBSCRIPTION_KEY = 'Bui6mfoAjznNMn9VNpLT71in9J4RCwzcsqY15taCikmV0cKKyRexJQQJ99ALACYeBjFXJ3w3AAAYACOGsPWr';
       const AZURE_REGION = 'eastus';
 
       // service instances
@@ -168,48 +403,175 @@
 
       let transcribedAll = '';
       let nLines = 0;
+      let llmEnabled = true;
+
+      // Initialize services when the page loads
+      window.addEventListener('DOMContentLoaded', () => {
+        const responseElement = document.getElementById('llm-output');
+        
+        // Initialize Ollama service
+        ollamaService = new OllamaService();
+        
+        // Initialize Azure Speech Service
+        azureSpeechService = new AzureSpeechService(AZURE_SUBSCRIPTION_KEY, AZURE_REGION);
+
+        // Set up reset conversation button
+        const resetButton = document.createElement('button');
+        resetButton.textContent = 'Reset Conversation';
+        resetButton.className = 'button';
+        resetButton.style.marginTop = '10px';
+        resetButton.onclick = () => {
+          if (ollamaService.resetConversation()) {
+            responseElement.innerHTML = ''; // Clear the response display
+            console.log('Conversation history reset');
+          }
+        };
+        responseElement.parentElement.insertBefore(resetButton, responseElement);
+      });
 
       // Enable the start button once the script is loaded
       document.getElementById('start').disabled = false;
 
-      // Initialize Ollama service
-      ollamaService = new OllamaService();
-      console.log('Ollama service initialized');
-
-      window.updateSystemPrompt = function() {
-        const newPrompt = document.getElementById('system-prompt').value;
+      window.updateModel = function() {
+        const newModel = document.getElementById('model-name').value;
         if (ollamaService) {
-          ollamaService.setSystemPrompt(newPrompt);
-          console.log('System prompt updated:', newPrompt);
+          if (ollamaService.setModel(newModel)) {
+            console.log('Model updated:', newModel);
+            showFeedback('Model updated and conversation reset');
+          }
         } else {
           console.error('Ollama service not initialized');
         }
       }
 
+      window.updateSystemPrompt = function() {
+        const newPrompt = document.getElementById('system-prompt').value;
+        if (ollamaService) {
+          if (ollamaService.setSystemPrompt(newPrompt)) {
+            console.log('System prompt updated');
+            showFeedback('System prompt updated and conversation reset');
+          }
+        } else {
+          console.error('Ollama service not initialized');
+        }
+      }
+
+      // Function to show temporary feedback
+      function showFeedback(message) {
+        const errorElement = document.getElementById('model-error');
+        errorElement.style.backgroundColor = '#d4edda';
+        errorElement.style.color = '#155724';
+        errorElement.style.borderColor = '#c3e6cb';
+        errorElement.textContent = message;
+        errorElement.classList.add('show');
+        
+        // Hide feedback after 3 seconds
+        setTimeout(() => {
+          errorElement.classList.remove('show');
+          // Reset styles
+          errorElement.style.backgroundColor = '';
+          errorElement.style.color = '';
+          errorElement.style.borderColor = '';
+        }, 3000);
+      }
+
+      // Handle text input submission
+      window.sendMessage = async function() {
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-message');
+        
+        if (!userInput.value.trim()) {
+          return;
+        }
+
+        try {
+          // Disable input and button while processing
+          userInput.disabled = true;
+          sendButton.disabled = true;
+
+          // Send to Ollama
+          await ollamaService.generateResponse(userInput.value, document.getElementById('llm-output'));
+          
+          // Clear input after successful send
+          userInput.value = '';
+        } catch (error) {
+          console.error('Error sending message:', error);
+        } finally {
+          // Re-enable input and button
+          userInput.disabled = false;
+          sendButton.disabled = false;
+          userInput.focus();
+        }
+      }
+
+      // Add enter key handler for the textarea
+      document.getElementById('user-input').addEventListener('keydown', function(e) {
+        // Check if Enter was pressed without holding Shift
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault(); // Prevent newline
+          window.sendMessage();
+        }
+      });
+
+      // Set up LLM toggle
+      document.getElementById('llm-toggle').addEventListener('change', function(e) {
+        llmEnabled = e.target.checked;
+        console.log('LLM Processing:', llmEnabled ? 'enabled' : 'disabled');
+      });
+
       function handleTranscription(text, speaker) {
         const transcriptionHtml = azureSpeechService.formatTranscription(text, speaker);
+        
+        // Get the transcription element
+        const transcriptionElement = document.getElementById('state-transcribed');
+        
+        if (!transcriptionElement) {
+          console.error('Transcription element not found');
+          return;
+        }
+
+        // Append the new transcription to the existing content
         transcribedAll += transcriptionHtml;
         nLines++;
 
-        // if more than 10 lines, remove the first line
-        if (nLines > 10) {
-          const i = transcribedAll.indexOf('<div class="transcription-line">');
-          if (i > 0) {
-            transcribedAll = transcribedAll.substring(i + transcriptionHtml.length);
+        // if more than 50 lines, remove the first line to prevent excessive memory usage
+        if (nLines > 50) {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(transcribedAll, 'text/html');
+          const lines = doc.querySelectorAll('.transcription-line');
+          if (lines.length > 0) {
+            lines[0].remove();
+            transcribedAll = doc.body.innerHTML;
             nLines--;
           }
         }
 
-        // Update display
-        document.getElementById('state-transcribed').innerHTML = transcribedAll;
+        // Update the display with all accumulated transcriptions
+        transcriptionElement.innerHTML = transcribedAll;
 
-        // Send to Ollama
-        if (ollamaService) {
-          const llmOutput = document.getElementById('llm-output');
-          ollamaService.generateResponse(text, llmOutput).catch(error => {
-            console.error('Error getting LLM response:', error);
-          });
+        // Scroll to the bottom to show latest text
+        transcriptionElement.scrollTop = transcriptionElement.scrollHeight;
+
+        // Only process through LLM if enabled
+        if (llmEnabled && ollamaService) {
+          try {
+            ollamaService.generateResponse(text, document.getElementById('llm-output')).catch(error => {
+              console.error('Error getting LLM response:', error);
+            });
+          } catch (error) {
+            console.error('Error processing text with LLM:', error);
+          }
         }
+      }
+
+      function resetTranscription() {
+        transcribedAll = '';
+        nLines = 0;
+        const transcriptionElement = document.getElementById('state-transcribed');
+        if (transcriptionElement) {
+          transcriptionElement.innerHTML = '[Transcribed text will appear here]';
+        }
+        console.log('Transcription reset');
       }
 
       async function startRecording() {
@@ -218,9 +580,13 @@
           if (!azureSpeechService) {
             azureSpeechService = new AzureSpeechService(AZURE_SUBSCRIPTION_KEY, AZURE_REGION);
           }
+          if (!ollamaService) {
+            ollamaService = new OllamaService();
+          }
 
           document.getElementById('start').disabled = true;
           document.getElementById('stop').disabled = false;
+          document.getElementById('state-status').textContent = 'listening';
 
           const stream = await window.startAudioCapture();
           await azureSpeechService.startContinuousRecognition(
@@ -229,8 +595,7 @@
           );
         } catch (error) {
           console.error('Error starting recording:', error);
-          document.getElementById('start').disabled = false;
-          document.getElementById('stop').disabled = true;
+          document.getElementById('state-status').textContent = 'error: ' + error.message;
         }
       }
 
@@ -239,23 +604,20 @@
           if (azureSpeechService) {
             await azureSpeechService.stopRecognition();
           }
+          await window.stopAudioCapture();
           
           document.getElementById('start').disabled = false;
           document.getElementById('stop').disabled = true;
+          document.getElementById('state-status').textContent = 'stopped';
         } catch (error) {
           console.error('Error stopping recording:', error);
+          document.getElementById('state-status').textContent = 'error: ' + error.message;
         }
       }
 
-      // Expose functions to window object
-      window.onStart = function() {
-        transcribedAll = '';
-        startRecording();
-      }
-
-      window.onStop = function() {
-        stopRecording();
-      }
+      window.onStart = startRecording;
+      window.onStop = stopRecording;
+      window.resetTranscription = resetTranscription;
     </script>
     <script type="module" src="./src/renderer.ts"></script>
     <script type="text/javascript" src="./src/stream.js"

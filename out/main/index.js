@@ -16,22 +16,50 @@ electron.ipcMain.handle("stop-audio-capture", async (event) => {
   const webContents = event.sender;
   await webContents.executeJavaScript("window.stopAudioCapture()");
 });
-async function handleOllamaRequest(event, prompt, systemPrompt) {
+async function handleOllamaRequest(event, conversationHistory, systemPrompt) {
   try {
-    const response = await fetch("http://localhost:11434/api/generate", {
+    const history = JSON.parse(conversationHistory);
+    const messages = history.map((msg) => ({
+      role: msg.role,
+      content: msg.content
+    }));
+    const model = history[0]?.model || "mistral";
+    try {
+      const modelCheckResponse = await fetch("http://localhost:11434/api/tags", {
+        method: "GET"
+      });
+      if (!modelCheckResponse.ok) {
+        throw new Error("Failed to check available models");
+      }
+      const models = await modelCheckResponse.json();
+      const modelExists = models.models.some((m) => m.name === model);
+      if (!modelExists) {
+        event.sender.send("ollama:error", `Model "${model}" is not installed. Please install it using 'ollama pull ${model}' in your terminal.`);
+        return null;
+      }
+    } catch (error) {
+      event.sender.send("ollama:error", `Failed to validate model: ${error.message}`);
+      return null;
+    }
+    const allMessages = [
+      { role: "system", content: systemPrompt },
+      ...messages
+    ];
+    const response = await fetch("http://localhost:11434/api/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "mistral",
-        prompt,
-        system: systemPrompt,
+        model,
+        messages: allMessages,
         stream: true
       })
     });
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      event.sender.send("ollama:error", `Failed to generate response: ${errorText}`);
+      return null;
     }
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
@@ -46,8 +74,8 @@ async function handleOllamaRequest(event, prompt, systemPrompt) {
       for (const line of lines) {
         try {
           const data = JSON.parse(line);
-          if (data.response) {
-            event.sender.send("ollama:chunk", data.response);
+          if (data.message?.content) {
+            event.sender.send("ollama:chunk", data.message.content);
           }
         } catch (e) {
           console.error("Error parsing JSON:", e);
@@ -58,6 +86,7 @@ async function handleOllamaRequest(event, prompt, systemPrompt) {
     return null;
   } catch (error) {
     console.error("Error calling Ollama:", error);
+    event.sender.send("ollama:error", `Error: ${error.message}`);
     throw error;
   }
 }

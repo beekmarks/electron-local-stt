@@ -22,28 +22,43 @@ class AzureSpeechService {
 
     async startContinuousRecognition(audioStream, onRecognized) {
         try {
+            // Clean up any existing recognizer
+            if (this.recognizer) {
+                await this.stopRecognition();
+            }
+
             const audioConfig = sdk.AudioConfig.fromStreamInput(audioStream);
             this.recognizer = new sdk.ConversationTranscriber(this.speechConfig, audioConfig);
 
+            // Keep track of the last recognized text to prevent duplicates
+            let lastRecognizedText = '';
+
             this.recognizer.transcribed = (s, e) => {
                 if (e.result.text && e.result.text.trim()) {
-                    try {
-                        // Get the speaker ID from the result
-                        const speakerId = e.result.speakerId || this.extractSpeakerId(e.result);
+                    const currentText = e.result.text.trim();
+                    
+                    // Only process if this is new text
+                    if (currentText !== lastRecognizedText) {
+                        lastRecognizedText = currentText;
                         
-                        // Assign a consistent speaker number if we haven't seen this speaker before
-                        if (speakerId && !this.speakers.has(speakerId)) {
-                            this.speakers.set(speakerId, this.nextSpeakerId++);
+                        try {
+                            // Get the speaker ID from the result
+                            const speakerId = e.result.speakerId || this.extractSpeakerId(e.result);
+                            
+                            // Assign a consistent speaker number if we haven't seen this speaker before
+                            if (speakerId && !this.speakers.has(speakerId)) {
+                                this.speakers.set(speakerId, this.nextSpeakerId++);
+                            }
+                            
+                            // Use the mapped speaker number or 'Unknown' if no speaker ID
+                            const speakerNumber = speakerId ? this.speakers.get(speakerId) : 'Unknown';
+                            const speakerLabel = speakerId ? `Speaker ${speakerNumber}` : 'Unknown';
+                            
+                            onRecognized(currentText, speakerLabel);
+                        } catch (error) {
+                            console.error('Error processing transcription:', error);
+                            onRecognized(currentText, 'Unknown');
                         }
-                        
-                        // Use the mapped speaker number or 'Unknown' if no speaker ID
-                        const speakerNumber = speakerId ? this.speakers.get(speakerId) : 'Unknown';
-                        const speakerLabel = speakerId ? `Speaker ${speakerNumber}` : 'Unknown';
-                        
-                        onRecognized(e.result.text.trim(), speakerLabel);
-                    } catch (error) {
-                        console.error('Error processing transcription:', error);
-                        onRecognized(e.result.text.trim(), 'Unknown');
                     }
                 }
             };

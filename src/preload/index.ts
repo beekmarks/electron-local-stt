@@ -5,14 +5,18 @@ import { electronAPI } from '@electron-toolkit/preload'
 const api = {
   startCapture: () => ipcRenderer.invoke('startCapture'),
   stopCapture: () => ipcRenderer.invoke('stopCapture'),
-  generateOllamaResponse: (prompt: string, systemPrompt: string, onChunk: (chunk: string) => void, onDone: () => void) => {
+  generateOllamaResponse: (conversationHistory: string, systemPrompt: string, onChunk: (chunk: string) => void, onDone: () => void) => {
     ipcRenderer.on('ollama:chunk', (_event, chunk) => onChunk(chunk));
     ipcRenderer.on('ollama:done', () => {
       ipcRenderer.removeAllListeners('ollama:chunk');
       ipcRenderer.removeAllListeners('ollama:done');
+      ipcRenderer.removeAllListeners('ollama:error');
       onDone();
     });
-    return ipcRenderer.invoke('ollama:generate', prompt, systemPrompt);
+    return ipcRenderer.invoke('ollama:generate', conversationHistory, systemPrompt);
+  },
+  onOllamaError: (callback: (error: string) => void) => {
+    ipcRenderer.on('ollama:error', (_event, error) => callback(error));
   }
 }
 

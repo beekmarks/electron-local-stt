@@ -20,23 +20,61 @@ ipcMain.handle('stop-audio-capture', async (event) => {
   await webContents.executeJavaScript('window.stopAudioCapture()');
 });
 
-async function handleOllamaRequest(event, prompt: string, systemPrompt: string) {
+async function handleOllamaRequest(event, conversationHistory: string, systemPrompt: string) {
   try {
-    const response = await fetch('http://localhost:11434/api/generate', {
+    const history = JSON.parse(conversationHistory);
+    const messages = history.map((msg: { role: string, content: string, model?: string }) => ({
+      role: msg.role,
+      content: msg.content
+    }));
+
+    // Get the model from the first message in history
+    const model = history[0]?.model || 'mistral';
+
+    // First validate if the model exists
+    try {
+      const modelCheckResponse = await fetch('http://localhost:11434/api/tags', {
+        method: 'GET'
+      });
+
+      if (!modelCheckResponse.ok) {
+        throw new Error('Failed to check available models');
+      }
+
+      const models = await modelCheckResponse.json();
+      const modelExists = models.models.some((m: { name: string }) => m.name === model);
+
+      if (!modelExists) {
+        event.sender.send('ollama:error', `Model "${model}" is not installed. Please install it using 'ollama pull ${model}' in your terminal.`);
+        return null;
+      }
+    } catch (error) {
+      event.sender.send('ollama:error', `Failed to validate model: ${error.message}`);
+      return null;
+    }
+
+    // Add system message at the start of the conversation
+    const allMessages = [
+      { role: 'system', content: systemPrompt },
+      ...messages
+    ];
+
+    const response = await fetch('http://localhost:11434/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'mistral',
-        prompt: prompt,
-        system: systemPrompt,
+        model: model,
+        messages: allMessages,
         stream: true
       })
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      event.sender.send('ollama:error', `Failed to generate response: ${errorText}`);
+      return null;
     }
 
     const reader = response.body?.getReader();
@@ -56,8 +94,8 @@ async function handleOllamaRequest(event, prompt: string, systemPrompt: string) 
       for (const line of lines) {
         try {
           const data = JSON.parse(line);
-          if (data.response) {
-            event.sender.send('ollama:chunk', data.response);
+          if (data.message?.content) {
+            event.sender.send('ollama:chunk', data.message.content);
           }
         } catch (e) {
           console.error('Error parsing JSON:', e);
@@ -69,6 +107,7 @@ async function handleOllamaRequest(event, prompt: string, systemPrompt: string) 
     return null;
   } catch (error) {
     console.error('Error calling Ollama:', error);
+    event.sender.send('ollama:error', `Error: ${error.message}`);
     throw error;
   }
 }
