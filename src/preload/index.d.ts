@@ -10,6 +10,10 @@ declare global {
     audioAPI: {
       startCapture: () => Promise<MediaStream>
       stopCapture: () => void
+      getCurrentSpeaker: () => boolean
+      getCurrentVolume: () => number
+      updateAudioState: (data: { volume: number; isSpeaking: boolean }) => void
+      onAudioUpdate: (callback: (data: { isSpeaking: boolean; volume: number }) => void) => () => void
     }
   }
 }

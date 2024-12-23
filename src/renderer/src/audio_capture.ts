@@ -1,14 +1,62 @@
 import { Observable } from 'rxjs'
 
+// Global variable to track if speech is detected
+declare global {
+  var current_speaker: boolean;
+  var current_volume: number;
+}
+globalThis.current_speaker = false;
+globalThis.current_volume = 0;
+
 export class Capturer {
   private recording_stream?: MediaStream
   private audio_context?: AudioContext
+  private analyser?: AnalyserNode
+  private speech_detection_interval?: number
+
+  private detectSpeechFromBothSources(desktopAnalyser: AnalyserNode) {
+    if (!this.analyser) {
+      console.log('No analyser node available');
+      return;
+    }
+    
+    const micData = new Uint8Array(this.analyser.frequencyBinCount);
+    const desktopData = new Uint8Array(desktopAnalyser.frequencyBinCount);
+    
+    this.analyser.getByteFrequencyData(micData);
+    desktopAnalyser.getByteFrequencyData(desktopData);
+    
+    // Calculate average volumes
+    const micVolume = micData.reduce((a, b) => a + b, 0) / micData.length;
+    const desktopVolume = desktopData.reduce((a, b) => a + b, 0) / desktopData.length;
+    
+    console.log('Audio volumes:', { micVolume, desktopVolume });
+    
+    // Determine which source is active
+    const micActive = micVolume > 15;
+    const desktopActive = desktopVolume > 15;
+    
+    // If microphone is active, it takes precedence
+    // If neither or both are active, maintain previous state
+    const isFromMic = micActive || (!desktopActive && window.audioAPI.getCurrentIsFromMic());
+    
+    // Update audio state with source information
+    if (window.audioAPI) {
+      window.audioAPI.updateAudioState({
+        volume: isFromMic ? micVolume : desktopVolume,
+        isSpeaking: micActive || desktopActive,
+        isFromMic: isFromMic
+      });
+    }
+  }
 
   private async mic(): Promise<MediaStream> {
     return navigator.mediaDevices.getUserMedia({
       audio: true,
       video: false
-    })
+    }).then((stream) => {
+      return stream;
+    });
   }
 
   private async audio(): Promise<MediaStream> {
@@ -27,27 +75,46 @@ export class Capturer {
     desktopStream: MediaStream,
     voiceStream: MediaStream
   ): MediaStreamTrack[] {
-    // Create a couple of sources
-    const source1 = audio_context.createMediaStreamSource(desktopStream)
-    const source2 = audio_context.createMediaStreamSource(voiceStream)
-    const destination = audio_context.createMediaStreamDestination()
-
-    const gain = audio_context.createGain()
+    console.log('Setting up audio processing chain');
+    this.audio_context = audio_context;
+    
+    // Create sources
+    const source1 = this.audio_context.createMediaStreamSource(desktopStream)
+    const source2 = this.audio_context.createMediaStreamSource(voiceStream)
+    
+    // Create analysers for both streams
+    const desktopAnalyser = this.audio_context.createAnalyser();
+    this.analyser = this.audio_context.createAnalyser();
+    desktopAnalyser.fftSize = 2048;
+    this.analyser.fftSize = 2048;
+    
+    source1.connect(desktopAnalyser);
+    source2.connect(this.analyser);
+    console.log('Analysers connected to streams');
+    
+    // Start speech detection
+    if (this.speech_detection_interval) {
+      clearInterval(this.speech_detection_interval);
+    }
+    this.speech_detection_interval = window.setInterval(() => {
+      this.detectSpeechFromBothSources(desktopAnalyser);
+    }, 50);
+    console.log('Speech detection interval started');
+    
+    const destination = this.audio_context.createMediaStreamDestination()
+    const gain = this.audio_context.createGain()
     gain.channelCountMode = 'explicit'
     gain.channelCount = 2
 
+    // Connect microphone with higher gain
+    const micGain = this.audio_context.createGain();
+    micGain.gain.value = 1.5;  // Boost microphone volume
+    source2.connect(micGain);
+    micGain.connect(gain);
+
+    // Connect desktop audio
     source1.connect(gain)
-    source2.connect(gain)
     gain.connect(destination)
-
-    // const desktopGain = audio_context.createGain();
-    // const voiceGain = audio_context.createGain();
-
-    // desktopGain.gain.value = 0.7;
-    // voiceGain.gain.value = 0.7;
-
-    // source1.connect(desktopGain).connect(destination);
-    // source2.connect(voiceGain).connect(destination);
 
     return destination.stream.getAudioTracks()
   }
@@ -81,72 +148,100 @@ export class Capturer {
     console.log('Recording started')
   }
 
-  stopRecording = async (): Promise<void> => {
-    if (!this.recording_stream) {
-      return
+  async stop(): Promise<void> {
+    console.log('Stopping audio capture');
+    if (this.speech_detection_interval) {
+      clearInterval(this.speech_detection_interval);
+      this.speech_detection_interval = undefined;
     }
-
-    this.recording_stream.getTracks().forEach((track) => track.stop())
-    this.recording_stream = undefined
-
+    
+    if (this.recording_stream) {
+      this.recording_stream.getTracks().forEach((track) => track.stop())
+      this.recording_stream = undefined
+    }
+    
     if (this.audio_context) {
-      this.audio_context.close()
+      await this.audio_context.close()
       this.audio_context = undefined
+      this.analyser = undefined
     }
-
-    console.log('Recording stopped')
+    
+    // Reset audio state through window.audioAPI
+    if (window.audioAPI) {
+      window.audioAPI.updateAudioState({
+        volume: 0,
+        isSpeaking: false
+      });
+    }
+    
+    console.log('Audio capture stopped')
   }
 }
 
 export class AudioStreamSource {
   private capturer: Capturer
   private recording_stream?: MediaStream
+  private audio_context?: AudioContext
 
   constructor() {
     this.capturer = new Capturer()
   }
 
   async getMediaStream(): Promise<MediaStream> {
-    return new Promise((resolve, reject) => {
-      try {
-        // Use the mic() method directly to get a MediaStream
-        navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: true,
-            autoGainControl: true,
-            sampleRate: 44100,
-            channelCount: 1
-          }
-        }).then(micStream => {
-          // Get system audio
-          navigator.mediaDevices.getDisplayMedia({
-            audio: true,
-            video: {
-              width: 320,
-              height: 240,
-              frameRate: 30
-            }
-          }).then(displayStream => {
-            // Create audio context and merge streams
-            const audioContext = new AudioContext({ sampleRate: 44100 });
-            const tracks = this.capturer.mergeAudioStreams(audioContext, displayStream, micStream);
-            this.recording_stream = new MediaStream(tracks);
-            resolve(this.recording_stream);
-          }).catch(reject);
-        }).catch(reject);
-      } catch (error) {
-        reject(error);
-      }
-    });
+    try {
+      console.log('Starting media stream setup');
+      
+      // Create audio context first
+      this.audio_context = new AudioContext({ sampleRate: 44100 });
+      console.log('Audio context created');
+
+      // Get microphone stream
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1
+        }
+      });
+      console.log('Microphone stream acquired');
+
+      // Get system audio
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        audio: true,
+        video: {
+          width: 320,
+          height: 240,
+          frameRate: 30
+        }
+      });
+      console.log('Display stream acquired');
+
+      // Merge streams
+      const tracks = this.capturer.mergeAudioStreams(this.audio_context, displayStream, micStream);
+      this.recording_stream = new MediaStream(tracks);
+      console.log('Streams merged successfully');
+      
+      return this.recording_stream;
+    } catch (error) {
+      console.error('Error in getMediaStream:', error);
+      throw error;
+    }
   }
 
   stop() {
+    console.log('Stopping audio capture');
     if (this.recording_stream) {
       this.recording_stream.getTracks().forEach(track => track.stop());
     }
-    this.capturer.stopRecording();
+    this.capturer.stop();
+    if (this.audio_context) {
+      this.audio_context.close();
+      this.audio_context = undefined;
+    }
     this.recording_stream = undefined;
+    console.log('Audio capture stopped');
   }
 }
 
@@ -158,7 +253,7 @@ export function audio_stream(): Observable<number[]> {
       })
   
       return (): void => {
-        capturer.stopRecording()
+        capturer.stop()
         subscriber.complete()
       }}
     )    
