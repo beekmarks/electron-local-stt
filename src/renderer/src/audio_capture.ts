@@ -8,45 +8,115 @@ declare global {
 globalThis.current_speaker = false;
 globalThis.current_volume = 0;
 
+// Audio processing constants
+const VOLUME_THRESHOLD_ON = 20;      // Higher threshold to start transmission
+const VOLUME_THRESHOLD_OFF = 10;     // Lower threshold to end transmission
+const MIN_TRANSMISSION_TIME = 500;   // Minimum ms to consider a valid transmission
+const TRANSMISSION_HOLDOFF = 300;    // Debounce time between speaker switches
+const VOLUME_DIFFERENCE_THRESHOLD = 1.2; // 20% volume difference required for speaker switch
+const BUFFER_SIZE = 10;             // Size of rolling buffer for volume averaging
+const ANALYSIS_INTERVAL = 50;       // 50ms for volume analysis
+const AUDIO_CHUNK_SIZE = 3000;      // 3 seconds for audio chunk processing
+const SILENCE_THRESHOLD = 5;        // Threshold for silence detection
+
 export class Capturer {
   private recording_stream?: MediaStream
   private audio_context?: AudioContext
   private analyser?: AnalyserNode
   private speech_detection_interval?: number
+  
+  // New state tracking variables
+  private currentSpeaker: 'mic' | 'desktop' = 'mic'
+  private lastSpeakerSwitch: number = 0
+  private micVolumeBuffer: number[] = []
+  private desktopVolumeBuffer: number[] = []
+  private lastTransmissionTime: number = 0
+  private isTransmitting: boolean = false
+
+  private addToRollingBuffer(buffer: number[], value: number): number {
+    buffer.push(value)
+    if (buffer.length > BUFFER_SIZE) {
+      buffer.shift()
+    }
+    return buffer.reduce((a, b) => a + b, 0) / buffer.length
+  }
+
+  private detectSilence(data: Uint8Array): boolean {
+    const volume = Math.sqrt(data.reduce((a, b) => a + b * b, 0) / data.length)
+    return volume < SILENCE_THRESHOLD
+  }
 
   private detectSpeechFromBothSources(desktopAnalyser: AnalyserNode) {
     if (!this.analyser) {
-      console.log('No analyser node available');
-      return;
+      console.log('No analyser node available')
+      return
     }
-    
-    const micData = new Uint8Array(this.analyser.frequencyBinCount);
-    const desktopData = new Uint8Array(desktopAnalyser.frequencyBinCount);
-    
-    this.analyser.getByteFrequencyData(micData);
-    desktopAnalyser.getByteFrequencyData(desktopData);
-    
-    // Calculate average volumes
-    const micVolume = micData.reduce((a, b) => a + b, 0) / micData.length;
-    const desktopVolume = desktopData.reduce((a, b) => a + b, 0) / desktopData.length;
-    
-    console.log('Audio volumes:', { micVolume, desktopVolume });
-    
-    // Determine which source is active
-    const micActive = micVolume > 15;
-    const desktopActive = desktopVolume > 15;
-    
-    // If microphone is active, it takes precedence
-    // If neither or both are active, maintain previous state
-    const isFromMic = micActive || (!desktopActive && window.audioAPI.getCurrentIsFromMic());
-    
-    // Update audio state with source information
+
+    const micData = new Uint8Array(this.analyser.frequencyBinCount)
+    const desktopData = new Uint8Array(desktopAnalyser.frequencyBinCount)
+
+    this.analyser.getByteFrequencyData(micData)
+    desktopAnalyser.getByteFrequencyData(desktopData)
+
+    // Calculate RMS volumes
+    const micVolume = Math.sqrt(micData.reduce((a, b) => a + b * b, 0) / micData.length)
+    const desktopVolume = Math.sqrt(desktopData.reduce((a, b) => a + b * b, 0) / desktopData.length)
+
+    // Add to rolling buffers
+    const avgMicVolume = this.addToRollingBuffer(this.micVolumeBuffer, micVolume)
+    const avgDesktopVolume = this.addToRollingBuffer(this.desktopVolumeBuffer, desktopVolume)
+
+    const now = Date.now()
+
+    // Determine active source with hysteresis
+    const micActive = this.currentSpeaker === 'mic' 
+      ? avgMicVolume > VOLUME_THRESHOLD_OFF 
+      : avgMicVolume > VOLUME_THRESHOLD_ON
+
+    const desktopActive = this.currentSpeaker === 'desktop'
+      ? avgDesktopVolume > VOLUME_THRESHOLD_OFF
+      : avgDesktopVolume > VOLUME_THRESHOLD_ON
+
+    // Check if we're within the debounce period
+    if (now - this.lastSpeakerSwitch < TRANSMISSION_HOLDOFF) {
+      return
+    }
+
+    // Update transmission state
+    if (micActive || desktopActive) {
+      if (!this.isTransmitting) {
+        this.isTransmitting = true
+        this.lastTransmissionTime = now
+      }
+    } else {
+      if (this.isTransmitting && (now - this.lastTransmissionTime) > MIN_TRANSMISSION_TIME) {
+        this.isTransmitting = false
+        // Clear buffers when transmission ends
+        this.micVolumeBuffer = []
+        this.desktopVolumeBuffer = []
+      }
+    }
+
+    // Determine speaker changes with volume difference threshold
+    if (micActive && (!desktopActive || avgMicVolume > avgDesktopVolume * VOLUME_DIFFERENCE_THRESHOLD)) {
+      if (this.currentSpeaker !== 'mic') {
+        this.lastSpeakerSwitch = now
+        this.currentSpeaker = 'mic'
+      }
+    } else if (desktopActive && avgDesktopVolume > avgMicVolume * VOLUME_DIFFERENCE_THRESHOLD) {
+      if (this.currentSpeaker !== 'desktop') {
+        this.lastSpeakerSwitch = now
+        this.currentSpeaker = 'desktop'
+      }
+    }
+
+    // Update audio state
     if (window.audioAPI) {
       window.audioAPI.updateAudioState({
-        volume: isFromMic ? micVolume : desktopVolume,
-        isSpeaking: micActive || desktopActive,
-        isFromMic: isFromMic
-      });
+        volume: this.currentSpeaker === 'mic' ? avgMicVolume : avgDesktopVolume,
+        isSpeaking: this.isTransmitting,
+        isFromMic: this.currentSpeaker === 'mic'
+      })
     }
   }
 
@@ -75,42 +145,44 @@ export class Capturer {
     desktopStream: MediaStream,
     voiceStream: MediaStream
   ): MediaStreamTrack[] {
-    console.log('Setting up audio processing chain');
-    this.audio_context = audio_context;
-    
+    console.log('Setting up audio processing chain')
+    this.audio_context = audio_context
+
     // Create sources
     const source1 = this.audio_context.createMediaStreamSource(desktopStream)
     const source2 = this.audio_context.createMediaStreamSource(voiceStream)
+
+    // Create analysers with larger FFT size for better frequency resolution
+    const desktopAnalyser = this.audio_context.createAnalyser()
+    this.analyser = this.audio_context.createAnalyser()
+    desktopAnalyser.fftSize = 2048
+    this.analyser.fftSize = 2048
     
-    // Create analysers for both streams
-    const desktopAnalyser = this.audio_context.createAnalyser();
-    this.analyser = this.audio_context.createAnalyser();
-    desktopAnalyser.fftSize = 2048;
-    this.analyser.fftSize = 2048;
-    
-    source1.connect(desktopAnalyser);
-    source2.connect(this.analyser);
-    console.log('Analysers connected to streams');
-    
-    // Start speech detection
+    // Increase smoothing for more stable readings
+    desktopAnalyser.smoothingTimeConstant = 0.8
+    this.analyser.smoothingTimeConstant = 0.8
+
+    source1.connect(desktopAnalyser)
+    source2.connect(this.analyser)
+
+    // Start speech detection with optimized interval
     if (this.speech_detection_interval) {
-      clearInterval(this.speech_detection_interval);
+      clearInterval(this.speech_detection_interval)
     }
     this.speech_detection_interval = window.setInterval(() => {
-      this.detectSpeechFromBothSources(desktopAnalyser);
-    }, 50);
-    console.log('Speech detection interval started');
-    
+      this.detectSpeechFromBothSources(desktopAnalyser)
+    }, ANALYSIS_INTERVAL)
+
     const destination = this.audio_context.createMediaStreamDestination()
     const gain = this.audio_context.createGain()
     gain.channelCountMode = 'explicit'
     gain.channelCount = 2
 
-    // Connect microphone with higher gain
-    const micGain = this.audio_context.createGain();
-    micGain.gain.value = 1.5;  // Boost microphone volume
-    source2.connect(micGain);
-    micGain.connect(gain);
+    // Connect microphone with adjusted gain
+    const micGain = this.audio_context.createGain()
+    micGain.gain.value = 1.5
+    source2.connect(micGain)
+    micGain.connect(gain)
 
     // Connect desktop audio
     source1.connect(gain)
@@ -121,6 +193,44 @@ export class Capturer {
 
   private sampleRate(stream: MediaStream): number | undefined {
     return stream.getAudioTracks()[0].getSettings().sampleRate
+  }
+
+  async stop(): Promise<void> {
+    console.log('Stopping audio capture');
+    if (this.speech_detection_interval) {
+      clearInterval(this.speech_detection_interval);
+      this.speech_detection_interval = undefined;
+    }
+    
+    if (this.recording_stream) {
+      this.recording_stream.getTracks().forEach((track) => track.stop())
+      this.recording_stream = undefined
+    }
+    
+    if (this.audio_context && this.audio_context.state !== 'closed') {
+      try {
+        await this.audio_context.close()
+      } catch (error) {
+        console.warn('Error closing AudioContext:', error)
+      }
+      this.audio_context = undefined
+      this.analyser = undefined
+    }
+    
+    // Reset audio state through window.audioAPI
+    if (window.audioAPI) {
+      window.audioAPI.updateAudioState({
+        volume: 0,
+        isSpeaking: false
+      });
+    }
+    
+    // Clear volume buffers
+    this.micVolumeBuffer = []
+    this.desktopVolumeBuffer = []
+    this.isTransmitting = false
+    
+    console.log('Audio capture stopped')
   }
 
   startRecording = async (cb: (buffer: number[]) => void): Promise<void> => {
@@ -146,35 +256,6 @@ export class Capturer {
     waveLoopbackNode.connect(this.audio_context.destination)
 
     console.log('Recording started')
-  }
-
-  async stop(): Promise<void> {
-    console.log('Stopping audio capture');
-    if (this.speech_detection_interval) {
-      clearInterval(this.speech_detection_interval);
-      this.speech_detection_interval = undefined;
-    }
-    
-    if (this.recording_stream) {
-      this.recording_stream.getTracks().forEach((track) => track.stop())
-      this.recording_stream = undefined
-    }
-    
-    if (this.audio_context) {
-      await this.audio_context.close()
-      this.audio_context = undefined
-      this.analyser = undefined
-    }
-    
-    // Reset audio state through window.audioAPI
-    if (window.audioAPI) {
-      window.audioAPI.updateAudioState({
-        volume: 0,
-        isSpeaking: false
-      });
-    }
-    
-    console.log('Audio capture stopped')
   }
 }
 
@@ -234,13 +315,9 @@ export class AudioStreamSource {
     console.log('Stopping audio capture');
     if (this.recording_stream) {
       this.recording_stream.getTracks().forEach(track => track.stop());
+      this.recording_stream = undefined;
     }
     this.capturer.stop();
-    if (this.audio_context) {
-      this.audio_context.close();
-      this.audio_context = undefined;
-    }
-    this.recording_stream = undefined;
     console.log('Audio capture stopped');
   }
 }
