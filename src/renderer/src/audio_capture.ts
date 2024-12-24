@@ -16,7 +16,6 @@ const TRANSMISSION_HOLDOFF = 300;    // Debounce time between speaker switches
 const VOLUME_DIFFERENCE_THRESHOLD = 1.2; // 20% volume difference required for speaker switch
 const BUFFER_SIZE = 10;             // Size of rolling buffer for volume averaging
 const ANALYSIS_INTERVAL = 50;       // 50ms for volume analysis
-const AUDIO_CHUNK_SIZE = 3000;      // 3 seconds for audio chunk processing
 const SILENCE_THRESHOLD = 5;        // Threshold for silence detection
 
 export class Capturer {
@@ -32,6 +31,10 @@ export class Capturer {
   private desktopVolumeBuffer: number[] = []
   private lastTransmissionTime: number = 0
   private isTransmitting: boolean = false
+  private pendingMicSwitch: boolean = false
+  private pendingMicSwitchTimeout?: NodeJS.Timeout
+  private pendingDesktopSwitch: boolean = false
+  private pendingDesktopSwitchTimeout?: NodeJS.Timeout
 
   private addToRollingBuffer(buffer: number[], value: number): number {
     buffer.push(value)
@@ -100,13 +103,43 @@ export class Capturer {
     // Determine speaker changes with volume difference threshold
     if (micActive && (!desktopActive || avgMicVolume > avgDesktopVolume * VOLUME_DIFFERENCE_THRESHOLD)) {
       if (this.currentSpeaker !== 'mic') {
+        // Clear any pending desktop switch
+        if (this.pendingDesktopSwitchTimeout) {
+          clearTimeout(this.pendingDesktopSwitchTimeout)
+          this.pendingDesktopSwitch = false
+        }
         this.lastSpeakerSwitch = now
-        this.currentSpeaker = 'mic'
+        // Add delay when switching to microphone
+        if (!this.pendingMicSwitch) {
+          this.pendingMicSwitch = true
+          if (this.pendingMicSwitchTimeout) {
+            clearTimeout(this.pendingMicSwitchTimeout)
+          }
+          this.pendingMicSwitchTimeout = setTimeout(() => {
+            this.currentSpeaker = 'mic'
+            this.pendingMicSwitch = false
+          }, 5000) // 5 second delay for next transcription round
+        }
       }
     } else if (desktopActive && avgDesktopVolume > avgMicVolume * VOLUME_DIFFERENCE_THRESHOLD) {
       if (this.currentSpeaker !== 'desktop') {
+        // Clear any pending mic switch
+        if (this.pendingMicSwitchTimeout) {
+          clearTimeout(this.pendingMicSwitchTimeout)
+          this.pendingMicSwitch = false
+        }
         this.lastSpeakerSwitch = now
-        this.currentSpeaker = 'desktop'
+        // Add delay when switching to desktop
+        if (!this.pendingDesktopSwitch) {
+          this.pendingDesktopSwitch = true
+          if (this.pendingDesktopSwitchTimeout) {
+            clearTimeout(this.pendingDesktopSwitchTimeout)
+          }
+          this.pendingDesktopSwitchTimeout = setTimeout(() => {
+            this.currentSpeaker = 'desktop'
+            this.pendingDesktopSwitch = false
+          }, 5000) // 5 second delay for next transcription round
+        }
       }
     }
 
