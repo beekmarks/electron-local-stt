@@ -11,12 +11,16 @@ globalThis.current_volume = 0;
 // Audio processing constants
 const VOLUME_THRESHOLD_ON = 20;      // Higher threshold to start transmission
 const VOLUME_THRESHOLD_OFF = 10;     // Lower threshold to end transmission
-const MIN_TRANSMISSION_TIME = 500;   // Minimum ms to consider a valid transmission
 const TRANSMISSION_HOLDOFF = 300;    // Debounce time between speaker switches
 const VOLUME_DIFFERENCE_THRESHOLD = 1.2; // 20% volume difference required for speaker switch
 const BUFFER_SIZE = 10;             // Size of rolling buffer for volume averaging
 const ANALYSIS_INTERVAL = 50;       // 50ms for volume analysis
-const SILENCE_THRESHOLD = 5;        // Threshold for silence detection
+
+interface SpeakerSegment {
+  speaker: 'mic' | 'desktop';
+  startTime: number;
+  endTime?: number;
+}
 
 export class Capturer {
   private recording_stream?: MediaStream
@@ -29,12 +33,14 @@ export class Capturer {
   private lastSpeakerSwitch: number = 0
   private micVolumeBuffer: number[] = []
   private desktopVolumeBuffer: number[] = []
-  private lastTransmissionTime: number = 0
   private isTransmitting: boolean = false
   private pendingMicSwitch: boolean = false
   private pendingMicSwitchTimeout?: NodeJS.Timeout
   private pendingDesktopSwitch: boolean = false
   private pendingDesktopSwitchTimeout?: NodeJS.Timeout
+  
+  // Add speaker segment tracking
+  private currentSegments: SpeakerSegment[] = []
 
   private addToRollingBuffer(buffer: number[], value: number): number {
     buffer.push(value)
@@ -42,11 +48,6 @@ export class Capturer {
       buffer.shift()
     }
     return buffer.reduce((a, b) => a + b, 0) / buffer.length
-  }
-
-  private detectSilence(data: Uint8Array): boolean {
-    const volume = Math.sqrt(data.reduce((a, b) => a + b * b, 0) / data.length)
-    return volume < SILENCE_THRESHOLD
   }
 
   private detectSpeechFromBothSources(desktopAnalyser: AnalyserNode) {
@@ -61,17 +62,14 @@ export class Capturer {
     this.analyser.getByteFrequencyData(micData)
     desktopAnalyser.getByteFrequencyData(desktopData)
 
-    // Calculate RMS volumes
     const micVolume = Math.sqrt(micData.reduce((a, b) => a + b * b, 0) / micData.length)
     const desktopVolume = Math.sqrt(desktopData.reduce((a, b) => a + b * b, 0) / desktopData.length)
 
-    // Add to rolling buffers
     const avgMicVolume = this.addToRollingBuffer(this.micVolumeBuffer, micVolume)
     const avgDesktopVolume = this.addToRollingBuffer(this.desktopVolumeBuffer, desktopVolume)
 
     const now = Date.now()
 
-    // Determine active source with hysteresis
     const micActive = this.currentSpeaker === 'mic' 
       ? avgMicVolume > VOLUME_THRESHOLD_OFF 
       : avgMicVolume > VOLUME_THRESHOLD_ON
@@ -80,36 +78,25 @@ export class Capturer {
       ? avgDesktopVolume > VOLUME_THRESHOLD_OFF
       : avgDesktopVolume > VOLUME_THRESHOLD_ON
 
-    // Check if we're within the debounce period
     if (now - this.lastSpeakerSwitch < TRANSMISSION_HOLDOFF) {
       return
     }
 
-    // Update transmission state
-    if (micActive || desktopActive) {
-      if (!this.isTransmitting) {
-        this.isTransmitting = true
-        this.lastTransmissionTime = now
-      }
-    } else {
-      if (this.isTransmitting && (now - this.lastTransmissionTime) > MIN_TRANSMISSION_TIME) {
-        this.isTransmitting = false
-        // Clear buffers when transmission ends
-        this.micVolumeBuffer = []
-        this.desktopVolumeBuffer = []
-      }
-    }
-
-    // Determine speaker changes with volume difference threshold
+    // Handle speaker changes with segment tracking
     if (micActive && (!desktopActive || avgMicVolume > avgDesktopVolume * VOLUME_DIFFERENCE_THRESHOLD)) {
       if (this.currentSpeaker !== 'mic') {
-        // Clear any pending desktop switch
         if (this.pendingDesktopSwitchTimeout) {
           clearTimeout(this.pendingDesktopSwitchTimeout)
           this.pendingDesktopSwitch = false
         }
+        
+        // Close current segment
+        if (this.currentSegments.length > 0) {
+          const currentSegment = this.currentSegments[this.currentSegments.length - 1]
+          currentSegment.endTime = now
+        }
+        
         this.lastSpeakerSwitch = now
-        // Add delay when switching to microphone
         if (!this.pendingMicSwitch) {
           this.pendingMicSwitch = true
           if (this.pendingMicSwitchTimeout) {
@@ -118,18 +105,29 @@ export class Capturer {
           this.pendingMicSwitchTimeout = setTimeout(() => {
             this.currentSpeaker = 'mic'
             this.pendingMicSwitch = false
-          }, 5000) // 5 second delay for next transcription round
+            
+            // Start new segment
+            this.currentSegments.push({
+              speaker: 'mic',
+              startTime: Date.now()
+            })
+          }, 5000)
         }
       }
     } else if (desktopActive && avgDesktopVolume > avgMicVolume * VOLUME_DIFFERENCE_THRESHOLD) {
       if (this.currentSpeaker !== 'desktop') {
-        // Clear any pending mic switch
         if (this.pendingMicSwitchTimeout) {
           clearTimeout(this.pendingMicSwitchTimeout)
           this.pendingMicSwitch = false
         }
+        
+        // Close current segment
+        if (this.currentSegments.length > 0) {
+          const currentSegment = this.currentSegments[this.currentSegments.length - 1]
+          currentSegment.endTime = now
+        }
+        
         this.lastSpeakerSwitch = now
-        // Add delay when switching to desktop
         if (!this.pendingDesktopSwitch) {
           this.pendingDesktopSwitch = true
           if (this.pendingDesktopSwitchTimeout) {
@@ -138,7 +136,13 @@ export class Capturer {
           this.pendingDesktopSwitchTimeout = setTimeout(() => {
             this.currentSpeaker = 'desktop'
             this.pendingDesktopSwitch = false
-          }, 5000) // 5 second delay for next transcription round
+            
+            // Start new segment
+            this.currentSegments.push({
+              speaker: 'desktop',
+              startTime: Date.now()
+            })
+          }, 5000)
         }
       }
     }
@@ -148,7 +152,8 @@ export class Capturer {
       window.audioAPI.updateAudioState({
         volume: this.currentSpeaker === 'mic' ? avgMicVolume : avgDesktopVolume,
         isSpeaking: this.isTransmitting,
-        isFromMic: this.currentSpeaker === 'mic'
+        isFromMic: this.currentSpeaker === 'mic',
+        segments: this.currentSegments  // Add segments to state update
       })
     }
   }
@@ -222,10 +227,6 @@ export class Capturer {
     gain.connect(destination)
 
     return destination.stream.getAudioTracks()
-  }
-
-  private sampleRate(stream: MediaStream): number | undefined {
-    return stream.getAudioTracks()[0].getSettings().sampleRate
   }
 
   async stop(): Promise<void> {

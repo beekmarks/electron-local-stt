@@ -3,7 +3,7 @@
   
   <head>
     <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline'; object-src 'self'">
-    <title>Real-time Local Speech To Text</title>
+    <title>Real-time Local Speech-to-Text with VOX-Style Speaker Detection</title>
 
     <style>
       body {
@@ -171,52 +171,129 @@ var currentTranscriptionSpeaker = 'Customer';
 var isTranscribing = false;
 var transcriptionStartTime = 0;
 var lastTranscriptionText = '';
+var currentAudioSegments = [];
 
 function updateTranscription(text) {
-  if (!text.trim() || text === lastTranscriptionText) return;  // Skip empty text or duplicates
-  
-  lastTranscriptionText = text;
-  console.log('Updating transcription with speaker:', currentTranscriptionSpeaker);
+  if (!text.trim()) return;  // Skip empty text
   
   const transcribed = document.getElementById('state-transcribed');
-  const labelClass = currentTranscriptionSpeaker.toLowerCase();
-  
+  if (!transcribed) return;
+
   // Create a new entry div
   const entry = document.createElement('div');
   entry.className = 'transcription-entry';
   
-  // Add speaker label
+  // Add speaker label with timestamp
   const label = document.createElement('span');
-  label.className = `speaker-label ${labelClass}`;
-  label.textContent = currentTranscriptionSpeaker;
+  label.className = `speaker-label ${currentTranscriptionSpeaker.toLowerCase()}`;
+  const time = new Date().toLocaleTimeString();
+  label.textContent = `${currentTranscriptionSpeaker} [${time}]`;
   
   // Add transcription text
   const textSpan = document.createElement('span');
   textSpan.className = 'transcription-text';
   textSpan.textContent = text;
   
-  // Assemble the entry
+  // Assemble and add the entry
   entry.appendChild(label);
   entry.appendChild(textSpan);
-  
-  // Add the new entry
   transcribed.appendChild(entry);
   
   // Scroll to bottom
   transcribed.scrollTop = transcribed.scrollHeight;
+  
+  // Store last text to prevent duplicates
+  lastTranscriptionText = text;
 }
 
-function printTextarea(text) {
-  if (text.includes('whisper_print_timings:')) {
+function setupAudioMonitoring() {
+  console.log('Setting up audio monitoring');
+  const speakerStatus = document.getElementById('speaker-status');
+  const volumeLevel = document.getElementById('volume-level');
+  const volumeValue = document.getElementById('volume-value');
+  const currentSpeakerLabel = document.getElementById('current-speaker-label');
+
+  let audioUpdateCleanup = window.audioAPI.onAudioUpdate(({ isSpeaking, volume, isFromMic }) => {
+    // Update speaker status
+    speakerStatus.textContent = isSpeaking ? 'Speaking' : 'Silent';
+    speakerStatus.className = isSpeaking ? 'speaking' : 'silent';
+
+    // Update volume display
+    const volumePercent = Math.min(100, Math.max(0, volume * 2));
+    volumeLevel.style.width = `${volumePercent}%`;
+    volumeValue.textContent = `Volume: ${Math.round(volume)}`;
+
+    // Only update speaker label if we're not actively transcribing
+    if (!isTranscribing) {
+      // Invert the speaker assignment - mic is Representative, desktop is Customer
+      currentTranscriptionSpeaker = isFromMic ? 'Representative' : 'Customer';
+      
+      // Update the visual label
+      currentSpeakerLabel.textContent = currentTranscriptionSpeaker;
+      currentSpeakerLabel.className = `speaker-label ${currentTranscriptionSpeaker.toLowerCase()}`;
+      
+      console.log('Speaker updated (not transcribing):', currentTranscriptionSpeaker);
+    }
+  });
+
+  return audioUpdateCleanup;
+}
+
+async function onStart() {
+  console.log('Start button clicked');
+  transcribedAll = '';
+  lastTranscriptionText = '';
+  isTranscribing = false;
+  
+  if (!instance) {
+    instance = Module.init('whisper.bin');
+
+    // if (instance) {
+    //   printTextarea('js: whisper initialized, instance: ' + instance);
+    // }
+  }
+
+  if (!instance) {
+    printTextarea('js: failed to initialize whisper');
     return;
   }
-  if (text.includes('whisper_model_load: loading')) {
-    return;
+
+  try {
+    await startRecording();
+    console.log('Recording started, setting up audio monitoring');
+    audioUpdateCleanup = setupAudioMonitoring();
+  } catch (e) {
+    console.error('Error starting recording:', e);
   }
-  if (text.includes('whisper_model_load: n_vocab')) {
-    return;
+
+  intervalUpdate = setInterval(function () {
+    var transcribed = Module.get_transcribed();
+
+    if (transcribed != null && transcribed.length > 1 && transcribed !== lastTranscriptionText) {
+      // Mark the start of transcription
+      if (!isTranscribing) {
+        isTranscribing = true;
+        transcriptionStartTime = Date.now();
+        console.log('Transcription started, freezing speaker label:', currentTranscriptionSpeaker);
+      }
+      
+      updateTranscription(transcribed);
+      
+      // Reset transcription state after processing
+      isTranscribing = false;
+      console.log('Transcription complete, speaker label unfrozen');
+    }
+  }, 100);
+}
+
+function onStop() {
+  console.log('Stop button clicked');
+  if (audioUpdateCleanup) {
+    console.log('Cleaning up audio monitoring');
+    audioUpdateCleanup();
+    audioUpdateCleanup = null;
   }
-  updateTranscription(text);
+  stopRecording();
 }
 
 //
@@ -242,9 +319,9 @@ function storeFS(fname, buf) {
 
   Module.FS_createDataFile('/', fname, buf, true, true);
 
-  printTextarea(
-    'storeFS: stored model: ' + fname + ' size: ' + buf.length
-  );
+  // printTextarea(
+  //   'storeFS: stored model: ' + fname + ' size: ' + buf.length
+  // );
 
 
     document.getElementById('start').disabled = false;
@@ -478,105 +555,18 @@ var transcribedAll = '';
 
 let audioUpdateCleanup = null;
 
-function setupAudioMonitoring() {
-  console.log('Setting up audio monitoring');
-  const speakerStatus = document.getElementById('speaker-status');
-  const volumeLevel = document.getElementById('volume-level');
-  const volumeValue = document.getElementById('volume-value');
-  const currentSpeakerLabel = document.getElementById('current-speaker-label');
-
-  let audioUpdateCleanup = window.audioAPI.onAudioUpdate(({ isSpeaking, volume, isFromMic }) => {
-    // Update speaker status
-    speakerStatus.textContent = isSpeaking ? 'Speaking' : 'Silent';
-    speakerStatus.className = isSpeaking ? 'speaking' : 'silent';
-
-    // Update volume display
-    const volumePercent = Math.min(100, Math.max(0, volume * 2));
-    volumeLevel.style.width = `${volumePercent}%`;
-    volumeValue.textContent = `Volume: ${Math.round(volume)}`;
-
-    // Only update speaker label if we're not actively transcribing
-    if (!isTranscribing) {
-      currentTranscriptionSpeaker = isFromMic ? 'Representative' : 'Customer';
-      
-      // Update the visual label
-      currentSpeakerLabel.textContent = currentTranscriptionSpeaker;
-      currentSpeakerLabel.className = `speaker-label ${currentTranscriptionSpeaker.toLowerCase()}`;
-      
-      console.log('Speaker updated (not transcribing):', currentTranscriptionSpeaker);
-    } else {
-      console.log('Speaker update skipped (transcribing):', currentTranscriptionSpeaker);
-    }
-  });
-
-  return audioUpdateCleanup;
-}
-
-async function onStart() {
-  console.log('Start button clicked');
-  transcribedAll = '';
-  lastTranscriptionText = '';
-  isTranscribing = false;
-  
-  if (!instance) {
-    instance = Module.init('whisper.bin');
-
-    if (instance) {
-      printTextarea('js: whisper initialized, instance: ' + instance);
-    }
-  }
-
-  if (!instance) {
-    printTextarea('js: failed to initialize whisper');
+function printTextarea(text) {
+  if (text.includes('whisper_print_timings:')) {
     return;
   }
-
-  try {
-    await startRecording();
-    console.log('Recording started, setting up audio monitoring');
-    audioUpdateCleanup = setupAudioMonitoring();
-  } catch (e) {
-    console.error('Error starting recording:', e);
+  if (text.includes('whisper_model_load: loading')) {
+    return;
   }
-
-  intervalUpdate = setInterval(function () {
-    var transcribed = Module.get_transcribed();
-
-    if (transcribed != null && transcribed.length > 1 && transcribed !== lastTranscriptionText) {
-      // Mark the start of transcription
-      if (!isTranscribing) {
-        isTranscribing = true;
-        transcriptionStartTime = Date.now();
-        console.log('Transcription started, freezing speaker label:', currentTranscriptionSpeaker);
-      }
-      
-      updateTranscription(transcribed);
-      
-      // Reset transcription state after processing
-      isTranscribing = false;
-      console.log('Transcription complete, speaker label unfrozen');
-    }
-
-    document.getElementById('state-status').innerHTML = Module.get_status();
-  }, 100);
+  if (text.includes('whisper_model_load: n_vocab')) {
+    return;
+  }
+  updateTranscription(text);
 }
-
-function onStop() {
-  console.log('Stop button clicked');
-  if (audioUpdateCleanup) {
-    console.log('Cleaning up audio monitoring');
-    audioUpdateCleanup();
-    audioUpdateCleanup = null;
-  }
-  stopRecording();
-}
-
-// Clean up when the page is unloaded
-window.addEventListener('unload', () => {
-  if (audioUpdateCleanup) {
-    audioUpdateCleanup();
-  }
-});
 
 //Automatically download smallest quantized model
 loadWhisper('tiny-en-q5_1')
@@ -586,8 +576,6 @@ loadWhisper('tiny-en-q5_1')
     <script type="module" src="./src/renderer.ts"></script>
     <script type="text/javascript" src="./src/stream.js"
   ></script>
-<script>
-  console.log(window.myCustomData); // This will print "Hello from main process"
-</script>
+
   </body>
 </html>

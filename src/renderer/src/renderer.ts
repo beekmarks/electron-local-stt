@@ -1,26 +1,7 @@
-import { audio_stream, AudioStreamSource } from './audio_capture'
-import { buffer, firstValueFrom, fromEvent, map, ObservableInput } from 'rxjs'
-import { renderWavFile } from './wav'
+import { AudioStreamSource } from './audio_capture'
 
 let audioSource: AudioStreamSource | null = null
 let currentStream: MediaStream | null = null
-
-async function record_wav(stop_event: ObservableInput<any>): Promise<void> {
-  const data = await firstValueFrom(
-    audio_stream().pipe(
-      buffer(stop_event),
-      map((chunks) => {
-        const numFrames = chunks.reduce((acc, chunk) => acc.concat(chunk), [])
-        return new Float32Array(numFrames)
-      }),
-      map((data) =>
-        renderWavFile(data, { isFloat: true, numChannels: 1, sampleRate: 44100 })
-      )
-    )
-  )
-  console.log('Writing file')
-  await window.nodeAPI.writeFile('out.wav', data)
-}
 
 async function startAudioCapture(): Promise<MediaStream> {
   try {

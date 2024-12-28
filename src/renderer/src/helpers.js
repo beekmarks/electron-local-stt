@@ -28,7 +28,7 @@ async function clearCache() {
 
 // fetch a remote file from remote URL using the Fetch API
 async function fetchRemote(url, cbProgress, cbPrint) {
-    cbPrint('fetchRemote: downloading with fetch()...');
+    //cbPrint('fetchRemote: downloading with fetch()...');
 
     const response = await fetch(
         url,
@@ -38,7 +38,7 @@ async function fetchRemote(url, cbProgress, cbPrint) {
     );
 
     if (!response.ok) {
-        cbPrint('fetchRemote: failed to fetch ' + url);
+        //cbPrint('fetchRemote: failed to fetch ' + url);
         return;
     }
 
@@ -65,7 +65,7 @@ async function fetchRemote(url, cbProgress, cbPrint) {
 
             var progressCur = Math.round((receivedLength / total) * 10);
             if (progressCur != progressLast) {
-                cbPrint('fetchRemote: fetching ' + 10*progressCur + '% ...');
+                //cbPrint('fetchRemote: fetching ' + 10*progressCur + '% ...');
                 progressLast = progressCur;
             }
         }
@@ -87,12 +87,12 @@ async function fetchRemote(url, cbProgress, cbPrint) {
 // - if not, fetch it from the remote URL and store it in the IndexedDB
 function loadRemote(url, dst, size_mb, cbProgress, cbReady, cbCancel, cbPrint) {
     if (!navigator.storage || !navigator.storage.estimate) {
-        cbPrint('loadRemote: navigator.storage.estimate() is not supported');
+        //cbPrint('loadRemote: navigator.storage.estimate() is not supported');
     } else {
         // query the storage quota and print it
         navigator.storage.estimate().then(function (estimate) {
-            cbPrint('loadRemote: storage quota: ' + estimate.quota + ' bytes');
-            cbPrint('loadRemote: storage usage: ' + estimate.usage + ' bytes');
+            //cbPrint('loadRemote: storage quota: ' + estimate.quota + ' bytes');
+            //cbPrint('loadRemote: storage usage: ' + estimate.usage + ' bytes');
         });
     }
 
@@ -103,12 +103,12 @@ function loadRemote(url, dst, size_mb, cbProgress, cbReady, cbCancel, cbPrint) {
         var db = event.target.result;
         if (db.version == 1) {
             var os = db.createObjectStore('models', { autoIncrement: false });
-            cbPrint('loadRemote: created IndexedDB ' + db.name + ' version ' + db.version);
+            //cbPrint('loadRemote: created IndexedDB ' + db.name + ' version ' + db.version);
         } else {
             // clear the database
             var os = event.currentTarget.transaction.objectStore('models');
             os.clear();
-            cbPrint('loadRemote: cleared IndexedDB ' + db.name + ' version ' + db.version);
+            //cbPrint('loadRemote: cleared IndexedDB ' + db.name + ' version ' + db.version);
         }
     };
 
@@ -120,11 +120,11 @@ function loadRemote(url, dst, size_mb, cbProgress, cbReady, cbCancel, cbPrint) {
 
         rq.onsuccess = function (event) {
             if (rq.result) {
-                cbPrint('loadRemote: "' + url + '" is already in the IndexedDB');
+                //cbPrint('loadRemote: "' + url + '" is already in the IndexedDB');
                 cbReady(dst, rq.result);
             } else {
                 // data is not in the IndexedDB
-                cbPrint('loadRemote: "' + url + '" is not in the IndexedDB');
+                //cbPrint('loadRemote: "' + url + '" is not in the IndexedDB');
 
                 // alert and ask the user to confirm
                 if (!confirm(
@@ -148,18 +148,18 @@ function loadRemote(url, dst, size_mb, cbProgress, cbReady, cbCancel, cbPrint) {
                             try {
                                 var rq = os.put(data, url);
                             } catch (e) {
-                                cbPrint('loadRemote: failed to store "' + url + '" in the IndexedDB: \n' + e);
+                                //cbPrint('loadRemote: failed to store "' + url + '" in the IndexedDB: \n' + e);
                                 cbCancel();
                                 return;
                             }
 
                             rq.onsuccess = function (event) {
-                                cbPrint('loadRemote: "' + url + '" stored in the IndexedDB');
+                                //cbPrint('loadRemote: "' + url + '" stored in the IndexedDB');
                                 cbReady(dst, data);
                             };
 
                             rq.onerror = function (event) {
-                                cbPrint('loadRemote: failed to store "' + url + '" in the IndexedDB');
+                                //cbPrint('loadRemote: failed to store "' + url + '" in the IndexedDB');
                                 cbCancel();
                             };
                         };
@@ -169,23 +169,23 @@ function loadRemote(url, dst, size_mb, cbProgress, cbReady, cbCancel, cbPrint) {
         };
 
         rq.onerror = function (event) {
-            cbPrint('loadRemote: failed to get data from the IndexedDB');
+            //cbPrint('loadRemote: failed to get data from the IndexedDB');
             cbCancel();
         };
     };
 
     rq.onerror = function (event) {
-        cbPrint('loadRemote: failed to open IndexedDB');
+        //cbPrint('loadRemote: failed to open IndexedDB');
         cbCancel();
     };
 
     rq.onblocked = function (event) {
-        cbPrint('loadRemote: failed to open IndexedDB: blocked');
+        //cbPrint('loadRemote: failed to open IndexedDB: blocked');
         cbCancel();
     };
 
     rq.onabort = function (event) {
-        cbPrint('loadRemote: failed to open IndexedDB: abort');
+        //cbPrint('loadRemote: failed to open IndexedDB: abort');
         cbCancel();
     };
 }
