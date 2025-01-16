@@ -1,4 +1,3 @@
-{
-  "files": [],
-  "references": [{ "path": "./tsconfig.node.json" }, { "path": "./tsconfig.web.json" }]
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:3983835feac8cd22927398f66367953cbe99d53ef5a27a33fe35267f62560a8c
+size 107

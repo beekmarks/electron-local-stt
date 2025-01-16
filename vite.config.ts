@@ -1,24 +1,3 @@
-import { defineConfig } from 'vite'
-import electron from 'vite-plugin-electron/simple'
-import { resolve } from 'path'
-
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [
-    electron({
-      main: {
-        // vite config for electron main process
-        entry: 'src/main/index.ts',
-      },
-      preload: {
-        // vite config for electron preload process
-        input: 'src/preload/index.ts',
-      },
-    }),
-  ],
-  resolve: {
-    alias: {
-      'microsoft-cognitiveservices-speech-sdk': resolve(__dirname, 'node_modules/microsoft-cognitiveservices-speech-sdk/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js')
-    }
-  }
-})
+version https://git-lfs.github.com/spec/v1
+oid sha256:fd8275091ef0d669838b521a5e572832478dc51e1cf453445a82622d0646fa44
+size 675

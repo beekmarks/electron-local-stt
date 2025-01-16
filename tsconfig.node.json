@@ -1,8 +1,3 @@
-{
-  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
-  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*"],
-  "compilerOptions": {
-    "composite": true,
-    "types": ["electron-vite/node"]
-  }
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:eb01d98d1f9cd2793c9447499c88555a0b57e431a609f57d62e19dc0e2b509cb
+size 230

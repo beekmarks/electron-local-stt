@@ -1,18 +1,3 @@
-export default function wasmPlugin() {
-  return {
-    name: 'vite-plugin-wasm',
-    load(id) {
-      if (id.endsWith('.wasm')) {
-        return `
-          import wasmUrl from '${id}?url'
-          export default async function initWasm() {
-            const response = await fetch(wasmUrl)
-            const wasmBinary = await response.arrayBuffer()
-            return WebAssembly.instantiate(wasmBinary)
-          }
-        `
-      }
-    },
-    enforce: 'pre'
-  }
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:e8db34330cbbb1b2347dde339b353b2d4cebf89a0dd6a1b8640e2ae43246457f
+size 468
