@@ -1,5 +1,5 @@
 class OllamaService {
-  constructor(model = 'mistral', systemPrompt = 'You are a helpful AI assistant. Respond to the user\'s input in a clear and concise manner.') {
+  constructor(model = 'llama3.2', systemPrompt = 'You are a helpful AI assistant. Respond to the user\'s input in a clear and concise manner.') {
     this.model = model;
     this.systemPrompt = systemPrompt;
   }

@@ -393,9 +393,11 @@ function startRecording() {
 var nLines = 0;
 var intervalUpdate = null;
 var transcribedAll = '';
+var accumulatedTranscription = ''; // Add accumulated transcription variable
 
 function onStart() {
   transcribedAll = '';
+  accumulatedTranscription = ''; // Reset accumulated transcription
   
   if (!instance) {
     instance = Module.init('whisper.bin');
@@ -427,6 +429,7 @@ function onStart() {
 
     if (transcribed != null && transcribed.length > 1) {
       transcribedAll += transcribed + '<br>';
+      accumulatedTranscription += transcribed + ' '; // Accumulate all transcribed text
       nLines++;
 
       // if more than 10 lines, remove the first line
@@ -437,28 +440,29 @@ function onStart() {
           nLines--;
         }
       }
-
-      // Send the transcribed text to Ollama
-      try {
-        const llmOutput = document.getElementById('llm-output');
-        await ollamaService.generateResponse(transcribed, llmOutput);
-      } catch (error) {
-        console.error('Error getting LLM response:', error);
-      }
     }
 
-    document.getElementById('state-status').innerHTML =
-      Module.get_status();
-    document.getElementById('state-transcribed').innerHTML =
-      transcribedAll;
+    document.getElementById('state-status').innerHTML = Module.get_status();
+    document.getElementById('state-transcribed').innerHTML = transcribedAll;
   }, 100);
 }
 
 function onStop() {
   stopRecording();
+  clearInterval(intervalUpdate);
+
+  // Only send the accumulated text to the LLM when stopping
+  if (accumulatedTranscription && accumulatedTranscription.trim().length > 0) {
+    try {
+      const llmOutput = document.getElementById('llm-output');
+      ollamaService.generateResponse(accumulatedTranscription.trim(), llmOutput);
+    } catch (error) {
+      console.error('Error getting LLM response:', error);
+    }
+  }
 }
 
-
+//
 //Automatically download smallest quantized model
 loadWhisper('tiny-en-q5_1')
 
