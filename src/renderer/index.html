@@ -64,6 +64,53 @@
         margin-right: 10px;
       }
 
+      .response-container {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        background: #f5f5f5;
+        border: 1px solid #E1E1E1;
+        border-radius: var(--border-radius);
+        padding: 15px;
+        margin-top: 10px;
+        min-height: 100px;
+        max-height: 400px;
+        overflow-y: auto;
+        width: 100%;
+        box-sizing: border-box;
+      }
+
+      .transcription-container, .llm-response-container {
+        margin-top: var(--spacing);
+      }
+
+      #state-transcribed {
+        background-color: var(--card-background);
+        border: 1px solid #E1E1E1;
+      }
+
+      h3 {
+        margin-bottom: 10px;
+      }
+
+      .input-group {
+        margin-bottom: var(--spacing);
+      }
+
+      #llm-query-input {
+        width: 100%;
+        min-height: 80px;
+        padding: 10px;
+        border: 1px solid #E1E1E1;
+        border-radius: var(--border-radius);
+        font-family: inherit;
+        font-size: 14px;
+        resize: vertical;
+        margin-bottom: 10px;
+      }
+
       #output {
         width: 100%;
         margin: var(--spacing) 0;
@@ -81,14 +128,90 @@
         margin-top: var(--spacing);
       }
 
-      #state-transcribed {
-        background-color: var(--card-background);
-        border: 1px solid #E1E1E1;
+      .response-container {
+        background: #f5f5f5;
         border-radius: var(--border-radius);
         padding: 15px;
-        margin: var(--spacing) 0;
-        max-height: 300px;
+        margin-top: 10px;
+        max-height: 400px;
         overflow-y: auto;
+      }
+
+      #llm-output, #direct-query-response {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        margin: 0;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .model-info {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .model-info div {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .model-info strong {
+        color: var(--text-color);
+        min-width: 120px;
+      }
+
+      #ollama-model-status, #model-whisper-status {
+        color: var(--primary-color);
+        font-weight: 500;
+      }
+
+      #fetch-whisper-progress {
+        color: #666;
+        font-size: 0.9em;
+        margin-left: 8px;
+      }
+
+      .status-container {
+        margin-bottom: var(--spacing);
+      }
+
+      hr {
+        border: none;
+        border-top: 1px solid #E1E1E1;
+        margin: var(--spacing) 0;
+      }
+
+      .response-item {
+        margin-bottom: 15px;
+        padding: 15px;
+        border-bottom: 1px solid #E1E1E1;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      .streaming-response {
+        display: inline-block;
+        min-height: 1em;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(5px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .response-item:last-child {
+        border-bottom: none;
+      }
+
+      #model-whisper {
+        margin-bottom: var(--spacing);
+      }
+
+      #state-status {
+        color: var(--primary-color);
+        font-weight: 500;
       }
 
       #system-prompt-container {
@@ -121,82 +244,9 @@
         line-height: 1.6;
       }
 
-      .response-item {
-        margin-bottom: 15px;
-        padding: 15px;
-        border-bottom: 1px solid #E1E1E1;
-        animation: fadeIn 0.3s ease-in;
-      }
-
-      .streaming-response {
-        display: inline-block;
-        min-height: 1em;
-      }
-
-      @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(5px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-
-      .response-item:last-child {
-        border-bottom: none;
-      }
-
-      h3 {
-        color: var(--text-color);
-        font-weight: 600;
-        margin: 0 0 15px 0;
-      }
-
-      #model-whisper {
-        margin-bottom: var(--spacing);
-      }
-
-      #state-status {
-        color: var(--primary-color);
-        font-weight: 500;
-      }
-
-      hr {
-        border: none;
-        border-top: 1px solid #E1E1E1;
-        margin: var(--spacing) 0;
-      }
-
-      .status-container {
-        margin-bottom: var(--spacing);
-      }
-
-      .transcription-container {
-        margin-bottom: var(--spacing);
-      }
-
-      .model-info {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .model-info div {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .model-info strong {
-        color: var(--text-color);
-        min-width: 120px;
-      }
-
-      #ollama-model-status, #model-whisper-status {
-        color: var(--primary-color);
-        font-weight: 500;
-      }
-
-      #fetch-whisper-progress {
-        color: #666;
-        font-size: 0.9em;
-        margin-left: 8px;
+      .response-wrapper {
+        overflow-y: auto;
+        max-height: 400px;
       }
     </style>
 
@@ -213,7 +263,7 @@
             <span id="fetch-whisper-progress"></span>
           </div>
           <div>
-            <strong>LLM Model:</strong> <span id="ollama-model-status">llama3.2</span>
+            <strong>LLM Model:</strong> <span id="ollama-model-status">deepseek-r1:7b</span>
           </div>
         </div>
       </div>
@@ -230,27 +280,185 @@
           <span id="state-status">not started</span>
         </div>
 
-        <div id="system-prompt-container">
-          <h3>System Prompt</h3>
-          <textarea id="system-prompt" rows="4">You are a helpful AI assistant. Respond to the user's input in a clear and concise manner.</textarea>
-          <button onclick="updateSystemPrompt()">Update System Prompt</button>
-        </div>
-
         <div class="transcription-container">
           <h3>Transcription</h3>
-          <pre id="state-transcribed">[The transcribed text will be displayed here]</pre>
+          <div id="state-transcribed" class="response-container">[The transcribed text will be displayed here]</div>
         </div>
 
-        <div id="llm-response">
+        <div class="llm-response-container">
           <h3>LLM Response</h3>
-          <div id="llm-output">[LLM responses will appear here]</div>
+          <div class="response-wrapper">
+            <div id="llm-output" class="response-container">[LLM responses will appear here]</div>
+          </div>
         </div>
       </div>
+
+      <div id="model-ollama" class="card">
+        <h2>Direct LLM Query</h2>
+        <div class="input-group">
+          <textarea id="llm-query-input" placeholder="Enter your query here..." rows="3" style="width: 100%; margin-bottom: 10px; padding: 8px; border-radius: var(--border-radius); border: 1px solid #ccc;"></textarea>
+          <button id="llm-query-button" onclick="executeQuery()" style="margin-bottom: 10px;">Execute Query</button>
+        </div>
+        <div class="response-wrapper">
+          <div id="direct-query-response" class="response-container"></div>
+        </div>
+      </div>
+
     </div>
 
     <script type="text/javascript" src="./src/helpers.js"></script>
-    <script type="text/javascript" src="./src/ollama.js"></script>
-    <script type="text/javascript">
+    <script>
+      let globalApi = null;
+
+      // Wait for the window.api to be available
+      function waitForApi() {
+        return new Promise((resolve, reject) => {
+          console.log('Waiting for API...');
+          console.log('Current window.api:', window.api);
+          
+          if (globalApi) {
+            console.log('Using cached API');
+            resolve(globalApi);
+            return;
+          }
+
+          if (window.api) {
+            console.log('API found immediately');
+            console.log('API methods:', Object.keys(window.api));
+            globalApi = window.api;
+            resolve(globalApi);
+            return;
+          }
+          
+          let attempts = 0;
+          const maxAttempts = 50; // 5 seconds maximum wait
+          
+          const checkInterval = setInterval(() => {
+            attempts++;
+            console.log(`Checking for API (attempt ${attempts})...`);
+            
+            if (window.api) {
+              clearInterval(checkInterval);
+              console.log('API found after waiting');
+              console.log('API methods:', Object.keys(window.api));
+              globalApi = window.api;
+              resolve(globalApi);
+            } else if (attempts >= maxAttempts) {
+              clearInterval(checkInterval);
+              const error = new Error('API not available after 5 seconds');
+              console.error(error);
+              reject(error);
+            }
+          }, 100);
+        });
+      }
+
+      // Initialize API on page load
+      document.addEventListener('DOMContentLoaded', async () => {
+        console.log('DOM Content Loaded');
+        try {
+          const api = await waitForApi();
+          console.log('API initialized successfully');
+          console.log('Available API methods:', Object.keys(api));
+          
+          // Test the API
+          if (typeof api.directOllamaQuery !== 'function') {
+            console.error('directOllamaQuery is not available');
+            console.log('API object:', api);
+          } else {
+            console.log('directOllamaQuery is available');
+          }
+        } catch (error) {
+          console.error('Failed to initialize API:', error);
+        }
+      });
+
+      async function executeQuery() {
+        const queryInput = document.getElementById('llm-query-input');
+        const responseDiv = document.getElementById('direct-query-response');
+        const queryButton = document.getElementById('llm-query-button');
+        
+        if (!queryInput.value.trim()) {
+          alert('Please enter a query');
+          return;
+        }
+
+        try {
+          // Clear and disable input
+          queryButton.disabled = true;
+          responseDiv.innerText = '';
+          
+          // Get API and make query
+          const api = await waitForApi();
+          if (!api || typeof api.directOllamaQuery !== 'function') {
+            throw new Error('API not available');
+          }
+
+          // Create a text node for updates
+          const textNode = document.createTextNode('');
+          responseDiv.appendChild(textNode);
+          
+          await api.directOllamaQuery(
+            queryInput.value,
+            (chunk) => {
+              if (chunk && chunk.length > 0) {
+                // Update text node content
+                textNode.textContent += chunk;
+                responseDiv.scrollTop = responseDiv.scrollHeight;
+              }
+            }
+          );
+        } catch (error) {
+          responseDiv.innerText = 'Error: ' + (error.message || 'Unknown error occurred');
+        } finally {
+          queryButton.disabled = false;
+        }
+      }
+
+      async function onStop() {
+        if (!instance) {
+          return;
+        }
+
+        document.getElementById('start').disabled = false;
+        document.getElementById('stop').disabled = true;
+
+        stopRecording();
+        clearInterval(intervalUpdate);
+        document.getElementById('state-status').innerText = 'not started';
+
+        if (accumulatedTranscription && accumulatedTranscription.trim().length > 0) {
+          try {
+            const llmOutput = document.getElementById('llm-output');
+            llmOutput.innerText = '';
+            
+            const api = await waitForApi();
+            if (!api) {
+              throw new Error('API not available');
+            }
+
+            // Create a text node for updates
+            const textNode = document.createTextNode('');
+            llmOutput.appendChild(textNode);
+            
+            await api.directOllamaQuery(
+              accumulatedTranscription.trim(),
+              (chunk) => {
+                if (chunk && chunk.length > 0) {
+                  // Update text node content
+                  textNode.textContent += chunk;
+                  llmOutput.scrollTop = llmOutput.scrollHeight;
+                }
+              }
+            );
+          } catch (error) {
+            const llmOutput = document.getElementById('llm-output');
+            llmOutput.innerText = 'Error: ' + error.message;
+          }
+        }
+      }
+    </script>
+    <script>
        // web audio context
        var context = null;
 
@@ -262,8 +470,8 @@
       var instance = null;
 
       // model names
-      var model_whisper = 'tiny-en-q5_1';
-      var model_llm = 'llama3.2';
+      var model_whisper = 'tiny.en';
+      var model_llm = 'deepseek-r1:7b';
 
       // ollama service instance
       var ollamaService = null;
@@ -297,22 +505,61 @@
         // write to WASM file using FS_createDataFile
         // if the file exists, delete it
         try {
-          Module.FS_unlink(fname);
+          if (window.Module && window.Module.FS_unlink) {
+            window.Module.FS_unlink(fname);
+          }
         } catch (e) {
           // ignore
         }
 
-        Module.FS_createDataFile('/', fname, buf, true, true);
+        if (!window.Module || !window.Module.FS_createDataFile) {
+          console.error('Module or FS_createDataFile not available');
+          return;
+        }
+
+        window.Module.FS_createDataFile('/', fname, buf, true, true);
 
         printTextarea(
           'storeFS: stored model: ' + fname + ' size: ' + buf.length
         );
 
-
+        // Enable start button and disable stop button only if Module is ready
+        if (window.Module && window.Module.ready) {
           document.getElementById('start').disabled = false;
           document.getElementById('stop').disabled = true;
-        
+        } else {
+          console.log('Waiting for Module to be ready...');
+        }
       }
+
+      // Initialize Module configuration
+      window.Module = {
+        ready: false,
+        print: function(text) {
+          if (typeof printTextarea === 'function') {
+            printTextarea(text);
+          } else {
+            console.log(text);
+          }
+        },
+        printErr: function(text) {
+          if (typeof printTextarea === 'function') {
+            printTextarea(text);
+          } else {
+            console.error(text);
+          }
+        },
+        onRuntimeInitialized: function() {
+          console.log('Module runtime initialized');
+          window.Module.ready = true;
+          
+          // Enable start button if model is already loaded
+          if (document.getElementById('start').disabled) {
+            document.getElementById('start').disabled = false;
+            document.getElementById('stop').disabled = true;
+          }
+        }
+      };
 
       function loadWhisper(model) {
         let urls = {
@@ -544,17 +791,6 @@
           return;
         }
 
-        if (!ollamaService) {
-          try {
-            ollamaService = new OllamaService();
-            console.log('Ollama service initialized');
-            updateModelStatus(); // Update the model status display
-          } catch (error) {
-            console.error('Failed to initialize Ollama service:', error);
-            printTextarea('Failed to initialize Ollama service: ' + error.message);
-          }
-        }
-
         startRecording();
 
         intervalUpdate = setInterval(async function () {
@@ -580,7 +816,15 @@
         }, 100);
       }
 
-      function onStop() {
+      async function onStop() {
+        console.log('Stopping recording...');
+        if (!instance) {
+          return;
+        }
+
+        document.getElementById('start').disabled = false;
+        document.getElementById('stop').disabled = true;
+
         stopRecording();
         clearInterval(intervalUpdate);
 
@@ -590,25 +834,40 @@
         // Only send the accumulated text to the LLM when stopping
         if (accumulatedTranscription && accumulatedTranscription.trim().length > 0) {
           try {
+            console.log('Processing transcription:', accumulatedTranscription.trim());
             const llmOutput = document.getElementById('llm-output');
-            ollamaService.generateResponse(accumulatedTranscription.trim(), llmOutput);
+            llmOutput.textContent = '';
+            
+            const api = await waitForApi();
+            console.log('Got API instance for transcription processing');
+            
+            await api.directOllamaQuery(
+              accumulatedTranscription.trim(),
+              (chunk) => {
+                console.log('Renderer received transcription response chunk:', chunk);
+                if (chunk && chunk.length > 0) {
+                  // Append each chunk to the response div
+                  llmOutput.textContent += chunk;
+                  // Force scroll to bottom to show new content
+                  llmOutput.scrollTop = llmOutput.scrollHeight;
+                }
+              }
+            );
+            console.log('Transcription processing complete');
           } catch (error) {
             console.error('Error getting LLM response:', error);
+            const llmOutput = document.getElementById('llm-output');
+            llmOutput.textContent = 'Error: ' + error.message;
           }
         }
       }
-
-      //
-      //Automatically download smallest quantized model
-      loadWhisper('base-en-q5_1')
-
-
-
     </script>
-  
+    <script>
+      //Automatically download smallest quantized model
+      loadWhisper('tiny.en')
+    </script>
     <script type="module" src="./src/renderer.ts"></script>
-    <script type="text/javascript" src="./src/stream.js"
-  ></script>
+    <script type="text/javascript" src="./src/stream.js"></script>
 <script>
   console.log(window.myCustomData); // This will print "Hello from main process"
 </script>

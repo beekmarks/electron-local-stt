@@ -24,7 +24,7 @@ async function handleOllamaRequest(event, prompt, systemPrompt) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "mistral",
+        model: "deepseek-r1:7b",
         prompt,
         system: systemPrompt,
         stream: true
@@ -61,6 +61,60 @@ async function handleOllamaRequest(event, prompt, systemPrompt) {
     throw error;
   }
 }
+async function handleDirectOllamaQuery(_event, prompt) {
+  console.log("Received direct Ollama query:", prompt);
+  try {
+    const response = await fetch("http://localhost:11434/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "deepseek-r1:7b",
+        prompt,
+        stream: true
+      })
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) {
+      throw new Error("Failed to get response reader");
+    }
+    let fullResponse = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        console.log("Stream complete. Full response:", fullResponse);
+        break;
+      }
+      const chunk = decoder.decode(value);
+      const lines = chunk.split("\n").filter((line) => line.trim());
+      for (const line of lines) {
+        try {
+          const json = JSON.parse(line);
+          if (json.response) {
+            fullResponse += json.response;
+            _event.sender.send("ollama:stream", json.response);
+          }
+        } catch (e) {
+          console.error("Error parsing JSON:", e);
+        }
+      }
+    }
+    _event.sender.send("ollama:complete", fullResponse);
+    return fullResponse;
+  } catch (error) {
+    console.error("Error in direct Ollama query:", error);
+    throw error;
+  }
+}
+console.log("Registering IPC handlers...");
+electron.ipcMain.handle("ollama:generate", handleOllamaRequest);
+electron.ipcMain.handle("ollama:direct-query", handleDirectOllamaQuery);
+console.log("IPC handlers registered");
 function createWindow() {
   const mainWindow = new electron.BrowserWindow({
     width: 900,
@@ -73,8 +127,10 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
       sandbox: false,
-      webSecurity: false
+      webSecurity: false,
       // Allow local file access and cross-origin requests
+      contextIsolation: true,
+      nodeIntegration: true
     }
   });
   electron.session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
@@ -104,7 +160,6 @@ function createWindow() {
     electron.shell.openExternal(details.url);
     return { action: "deny" };
   });
-  electron.ipcMain.handle("ollama:generate", handleOllamaRequest);
   if (utils.is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {

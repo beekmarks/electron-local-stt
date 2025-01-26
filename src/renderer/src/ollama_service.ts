@@ -4,35 +4,31 @@ interface OllamaResponse {
   done: boolean;
 }
 
+declare global {
+  interface Window {
+    api: {
+      generateOllamaResponse: (prompt: string, systemPrompt: string, onChunk: (chunk: string) => void, onDone: () => void) => Promise<void>;
+      directOllamaQuery: (prompt: string) => Promise<string>;
+      startCapture: () => Promise<void>;
+      stopCapture: () => Promise<void>;
+    };
+  }
+}
+
 export class OllamaService {
-  private baseUrl: string;
   private model: string;
 
-  constructor(baseUrl: string = 'http://localhost:11434', model: string = 'mistral') {
-    this.baseUrl = baseUrl;
+  constructor(model: string = 'deepseek-r1:7b') {
     this.model = model;
   }
 
   async generateResponse(prompt: string): Promise<string> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/generate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: this.model,
-          prompt: prompt,
-          stream: false
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!window.api?.directOllamaQuery) {
+        throw new Error('API not properly initialized');
       }
-
-      const data = await response.json() as OllamaResponse;
-      return data.response;
+      const response = await window.api.directOllamaQuery(prompt);
+      return response;
     } catch (error) {
       console.error('Error calling Ollama:', error);
       throw error;

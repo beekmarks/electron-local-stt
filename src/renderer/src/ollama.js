@@ -1,5 +1,8 @@
+
+
+
 class OllamaService {
-  constructor(model = 'llama3.2', systemPrompt = 'You are a helpful AI assistant. Respond to the user\'s input in a clear and concise manner.') {
+  constructor(model = 'deepseek-r1:7b', systemPrompt = 'You are a helpful assistant that always talks like a pirate.  Always respond to user queries using language that a pirate would use.') {
     this.model = model;
     this.systemPrompt = systemPrompt;
   }
@@ -13,7 +16,7 @@ class OllamaService {
       responseItem.className = 'response-item';
       responseItem.innerHTML = `
         <strong>Input:</strong> ${prompt}<br>
-        <strong>Response:</strong> <span class="streaming-response"></span>
+        <strong>Response:</strong> <pre class="streaming-response"></pre>
       `;
       responseElement.appendChild(responseItem);
       
@@ -24,12 +27,26 @@ class OllamaService {
         this.systemPrompt,
         (chunk) => {
           fullResponse += chunk;
-          streamingSpan.textContent = fullResponse;
+          try {
+            // Try to parse and pretty print as JSON
+            const jsonObj = JSON.parse(fullResponse);
+            streamingSpan.textContent = JSON.stringify(jsonObj, null, 2);
+          } catch (e) {
+            // If not valid JSON, display as plain text
+            streamingSpan.textContent = fullResponse;
+          }
           // Scroll to bottom
           responseElement.scrollTop = responseElement.scrollHeight;
         },
         () => {
           console.log('Stream complete');
+          // Try one final time to format as JSON in case the complete response is valid JSON
+          try {
+            const jsonObj = JSON.parse(fullResponse);
+            streamingSpan.textContent = JSON.stringify(jsonObj, null, 2);
+          } catch (e) {
+            // If still not valid JSON, leave as is
+          }
         }
       );
 

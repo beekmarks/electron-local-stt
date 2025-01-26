@@ -28,7 +28,7 @@ async function handleOllamaRequest(event, prompt: string, systemPrompt: string) 
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'mistral',
+        model: 'deepseek-r1:7b',
         prompt: prompt,
         system: systemPrompt,
         stream: true
@@ -73,6 +73,72 @@ async function handleOllamaRequest(event, prompt: string, systemPrompt: string) 
   }
 }
 
+async function handleDirectOllamaQuery(_event: Electron.IpcMainInvokeEvent, prompt: string) {
+  console.log('Received direct Ollama query:', prompt);
+  try {
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'deepseek-r1:7b',
+        prompt: prompt,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('Failed to get response reader');
+    }
+
+    let fullResponse = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        console.log('Stream complete. Full response:', fullResponse);
+        break;
+      }
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n').filter(line => line.trim());
+      
+      for (const line of lines) {
+        try {
+          const json = JSON.parse(line);
+          if (json.response) {
+            fullResponse += json.response;
+            // Send each chunk to the renderer process
+            _event.sender.send('ollama:stream', json.response);
+          }
+        } catch (e) {
+          console.error('Error parsing JSON:', e);
+        }
+      }
+    }
+
+    // Send a final event to indicate completion
+    _event.sender.send('ollama:complete', fullResponse);
+    return fullResponse;
+  } catch (error) {
+    console.error('Error in direct Ollama query:', error);
+    throw error;
+  }
+}
+
+// Register IPC handlers early
+console.log('Registering IPC handlers...');
+ipcMain.handle('ollama:generate', handleOllamaRequest);
+ipcMain.handle('ollama:direct-query', handleDirectOllamaQuery);
+console.log('IPC handlers registered');
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -88,7 +154,9 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      webSecurity: false  // Allow local file access and cross-origin requests
+      webSecurity: false,  // Allow local file access and cross-origin requests
+      contextIsolation: true,
+      nodeIntegration: true
     }
   })
 
@@ -124,9 +192,6 @@ function createWindow(): void {
     shell.openExternal(details.url)
     return { action: 'deny' }
   })
-
-  // Register IPC handler for Ollama requests
-  ipcMain.handle('ollama:generate', handleOllamaRequest);
 
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
