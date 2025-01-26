@@ -20,8 +20,9 @@ const api = {
     });
     return electron.ipcRenderer.invoke("ollama:generate", prompt, systemPrompt);
   },
-  directOllamaQuery: async (prompt, onStream) => {
+  directOllamaQuery: async (prompt, onStream, systemPrompt) => {
     console.log("Calling directOllamaQuery with prompt:", prompt);
+    console.log("System prompt in preload:", systemPrompt);
     try {
       const streamHandler = (_event, chunk) => {
         console.log("Preload received stream chunk:", chunk);
@@ -32,8 +33,8 @@ const api = {
       };
       electron.ipcRenderer.on("ollama:stream", streamHandler);
       electron.ipcRenderer.on("ollama:complete", completeHandler);
-      console.log("Making query to main process...");
-      const result = await electron.ipcRenderer.invoke("ollama:direct-query", prompt);
+      console.log("Making query to main process with system prompt:", systemPrompt);
+      const result = await electron.ipcRenderer.invoke("ollama:direct-query", prompt, systemPrompt);
       console.log("Query complete, final result:", result);
       electron.ipcRenderer.removeListener("ollama:stream", streamHandler);
       electron.ipcRenderer.removeListener("ollama:complete", completeHandler);

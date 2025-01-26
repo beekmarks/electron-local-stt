@@ -304,11 +304,38 @@
         </div>
       </div>
 
+      <div id="system-prompt-container" class="card">
+        <h3>System Prompt</h3>
+        <textarea id="system-prompt" placeholder="Enter your system prompt here..." rows="3" style="width: 100%; margin-bottom: 10px; padding: 8px; border-radius: var(--border-radius); border: 1px solid #ccc;"></textarea>
+        <button id="update-system-prompt" onclick="updateSystemPrompt()">Update System Prompt</button>
+      </div>
+
     </div>
 
     <script type="text/javascript" src="./src/helpers.js"></script>
+    <script type="text/javascript" src="./src/ollama.js"></script>
     <script>
       let globalApi = null;
+      let ollamaService = null;
+
+      // Initialize OllamaService when the page loads
+      document.addEventListener('DOMContentLoaded', () => {
+        ollamaService = new OllamaService();
+        document.getElementById('system-prompt').value = ollamaService.systemPrompt;
+        console.log('OllamaService initialized with system prompt:', ollamaService.systemPrompt);
+      });
+
+      function updateSystemPrompt() {
+        const promptInput = document.getElementById('system-prompt');
+        const newPrompt = promptInput.value.trim();
+        
+        if (newPrompt) {
+          ollamaService.systemPrompt = newPrompt;
+          console.log('System prompt updated to:', newPrompt);
+        } else {
+          alert('Please enter a system prompt');
+        }
+      }
 
       // Wait for the window.api to be available
       function waitForApi() {
@@ -394,6 +421,8 @@
             throw new Error('API not available');
           }
 
+          console.log('Current system prompt:', ollamaService.systemPrompt);
+
           // Create a text node for updates
           const textNode = document.createTextNode('');
           responseDiv.appendChild(textNode);
@@ -406,7 +435,8 @@
                 textNode.textContent += chunk;
                 responseDiv.scrollTop = responseDiv.scrollHeight;
               }
-            }
+            },
+            ollamaService.systemPrompt // Pass the system prompt
           );
         } catch (error) {
           responseDiv.innerText = 'Error: ' + (error.message || 'Unknown error occurred');
@@ -425,35 +455,38 @@
 
         stopRecording();
         clearInterval(intervalUpdate);
-        document.getElementById('state-status').innerText = 'not started';
 
+        // Reset status text
+        document.getElementById('state-status').innerHTML = 'not started';
+
+        // Only send the accumulated text to the LLM when stopping
         if (accumulatedTranscription && accumulatedTranscription.trim().length > 0) {
           try {
+            console.log('Processing transcription:', accumulatedTranscription.trim());
             const llmOutput = document.getElementById('llm-output');
-            llmOutput.innerText = '';
+            llmOutput.textContent = '';
             
             const api = await waitForApi();
-            if (!api) {
-              throw new Error('API not available');
-            }
-
-            // Create a text node for updates
-            const textNode = document.createTextNode('');
-            llmOutput.appendChild(textNode);
+            console.log('Got API instance for transcription processing');
             
             await api.directOllamaQuery(
               accumulatedTranscription.trim(),
               (chunk) => {
+                console.log('Renderer received transcription response chunk:', chunk);
                 if (chunk && chunk.length > 0) {
-                  // Update text node content
-                  textNode.textContent += chunk;
+                  // Append each chunk to the response div
+                  llmOutput.textContent += chunk;
+                  // Force scroll to bottom to show new content
                   llmOutput.scrollTop = llmOutput.scrollHeight;
                 }
-              }
+              },
+              ollamaService.systemPrompt // Pass the system prompt
             );
+            console.log('Transcription processing complete');
           } catch (error) {
+            console.error('Error getting LLM response:', error);
             const llmOutput = document.getElementById('llm-output');
-            llmOutput.innerText = 'Error: ' + error.message;
+            llmOutput.textContent = 'Error: ' + error.message;
           }
         }
       }
@@ -472,9 +505,6 @@
       // model names
       var model_whisper = 'tiny.en';
       var model_llm = 'deepseek-r1:7b';
-
-      // ollama service instance
-      var ollamaService = null;
 
       function updateModelStatus() {
         if (ollamaService) {
@@ -851,7 +881,8 @@
                   // Force scroll to bottom to show new content
                   llmOutput.scrollTop = llmOutput.scrollHeight;
                 }
-              }
+              },
+              ollamaService.systemPrompt // Pass the system prompt
             );
             console.log('Transcription processing complete');
           } catch (error) {
@@ -863,8 +894,14 @@
       }
     </script>
     <script>
-      //Automatically download smallest quantized model
-      loadWhisper('tiny.en')
+      document.addEventListener('DOMContentLoaded', () => {
+        //Automatically download smallest quantized model
+        if (typeof loadWhisper === 'function') {
+          loadWhisper('tiny.en');
+        } else {
+          console.error('loadWhisper function not found');
+        }
+      });
     </script>
     <script type="module" src="./src/renderer.ts"></script>
     <script type="text/javascript" src="./src/stream.js"></script>

@@ -61,19 +61,23 @@ async function handleOllamaRequest(event, prompt, systemPrompt) {
     throw error;
   }
 }
-async function handleDirectOllamaQuery(_event, prompt) {
+async function handleDirectOllamaQuery(_event, prompt, systemPrompt) {
   console.log("Received direct Ollama query:", prompt);
+  console.log("System prompt:", systemPrompt);
   try {
+    const requestBody = {
+      model: "deepseek-r1:7b",
+      prompt,
+      system: systemPrompt,
+      stream: true
+    };
+    console.log("Sending request to Ollama:", requestBody);
     const response = await fetch("http://localhost:11434/api/generate", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        model: "deepseek-r1:7b",
-        prompt,
-        stream: true
-      })
+      body: JSON.stringify(requestBody)
     });
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
