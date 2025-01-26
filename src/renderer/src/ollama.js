@@ -65,8 +65,20 @@ Your tasks include:
 
 The call transcript provided contains errors due to the transcription system. Reconstruct factual details as accurately as possible using context. After providing your initial analysis, you will receive feedback to refine your output.
 `) {
-    this.model = model;
+    this._model = model;
     this._systemPrompt = systemPrompt;
+  }
+
+  // Getter for model
+  get model() {
+    return this._model;
+  }
+
+  // Setter for model
+  set model(value) {
+    if (typeof value === 'string' && value.trim()) {
+      this._model = value.trim();
+    }
   }
 
   // Getter for systemPrompt

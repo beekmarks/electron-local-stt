@@ -73,12 +73,13 @@ async function handleOllamaRequest(event, prompt: string, systemPrompt: string) 
   }
 }
 
-async function handleDirectOllamaQuery(_event: Electron.IpcMainInvokeEvent, prompt: string, systemPrompt?: string) {
+async function handleDirectOllamaQuery(_event: Electron.IpcMainInvokeEvent, prompt: string, systemPrompt?: string, model: string = 'deepseek-r1:7b') {
   console.log('Received direct Ollama query:', prompt);
   console.log('System prompt:', systemPrompt);
+  console.log('Using model:', model);
   try {
     const requestBody = {
-      model: 'deepseek-r1:7b',
+      model: model,
       prompt: prompt,
       system: systemPrompt,
       stream: true

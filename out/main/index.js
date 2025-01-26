@@ -61,12 +61,13 @@ async function handleOllamaRequest(event, prompt, systemPrompt) {
     throw error;
   }
 }
-async function handleDirectOllamaQuery(_event, prompt, systemPrompt) {
+async function handleDirectOllamaQuery(_event, prompt, systemPrompt, model = "deepseek-r1:7b") {
   console.log("Received direct Ollama query:", prompt);
   console.log("System prompt:", systemPrompt);
+  console.log("Using model:", model);
   try {
     const requestBody = {
-      model: "deepseek-r1:7b",
+      model,
       prompt,
       system: systemPrompt,
       stream: true

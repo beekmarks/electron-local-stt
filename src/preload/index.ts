@@ -15,7 +15,8 @@ interface ElectronAPI {
   directOllamaQuery: (
     prompt: string,
     onStream: (chunk: string) => void,
-    systemPrompt?: string
+    systemPrompt?: string,
+    model?: string
   ) => Promise<string>
 }
 
@@ -39,9 +40,10 @@ const api: ElectronAPI = {
     });
     return ipcRenderer.invoke('ollama:generate', prompt, systemPrompt);
   },
-  directOllamaQuery: async (prompt: string, onStream: (chunk: string) => void, systemPrompt?: string) => {
+  directOllamaQuery: async (prompt: string, onStream: (chunk: string) => void, systemPrompt?: string, model?: string) => {
     console.log('Calling directOllamaQuery with prompt:', prompt);
     console.log('System prompt in preload:', systemPrompt);
+    console.log('Model in preload:', model);
     try {
       // Set up stream listener
       const streamHandler = (_event: any, chunk: string) => {
@@ -58,7 +60,7 @@ const api: ElectronAPI = {
 
       // Make the query
       console.log('Making query to main process with system prompt:', systemPrompt);
-      const result = await ipcRenderer.invoke('ollama:direct-query', prompt, systemPrompt);
+      const result = await ipcRenderer.invoke('ollama:direct-query', prompt, systemPrompt, model);
       console.log('Query complete, final result:', result);
 
       // Clean up listeners
